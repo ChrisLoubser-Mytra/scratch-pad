@@ -31,7 +31,7 @@ class TestContactForces:
 
     def test_no_contact_when_centered(self, simulator_5mm: RobotSimulator) -> None:
         """Test that no forces occur when robot is perfectly centered"""
-        force_left, force_right = simulator_5mm.contact_force(y=0.0, vy=0.0)
+        force_left, force_right, _, _ = simulator_5mm.contact_force(y=0.0, vy=0.0)
 
         assert force_left == 0.0
         assert force_right == 0.0
@@ -40,7 +40,7 @@ class TestContactForces:
         """Test that left wheel contacts when robot moves left"""
         # Move robot left so left wheel touches left flange
         y = -0.01  # 10mm left
-        force_left, force_right = simulator_5mm.contact_force(y=y, vy=0.0)
+        force_left, force_right, _, _ = simulator_5mm.contact_force(y=y, vy=0.0)
 
         assert force_left > 0  # Left wheel should experience force
         assert force_right == 0.0  # Right wheel should not contact
@@ -49,7 +49,7 @@ class TestContactForces:
         """Test that right wheel contacts when robot moves right"""
         # Move robot right so right wheel touches right flange
         y = 0.01  # 10mm right
-        force_left, force_right = simulator_5mm.contact_force(y=y, vy=0.0)
+        force_left, force_right, _, _ = simulator_5mm.contact_force(y=y, vy=0.0)
 
         assert force_left == 0.0  # Left wheel should not contact
         assert force_right > 0  # Right wheel should experience force
@@ -64,7 +64,7 @@ class TestContactForces:
         # This is impossible, so we can't have both contact with this geometry
         # Instead, test with a very large offset that definitely contacts left
         y = -0.05  # 50mm left
-        force_left, force_right = simulator_5mm.contact_force(y=y, vy=0.0)
+        force_left, force_right, _, _ = simulator_5mm.contact_force(y=y, vy=0.0)
 
         assert force_left > 0
         # Right wheel won't contact with this geometry, but left definitely will

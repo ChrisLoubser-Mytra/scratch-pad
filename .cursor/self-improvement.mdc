@@ -1,0 +1,55 @@
+---
+description: Instructions for Cursor to self-improve and update rules based on learning
+globs: []
+alwaysApply: true
+---
+
+# Rule Self-Improvement System
+
+## Rule Update Authority
+
+You are authorized and expected to update the rules in `.cursor/rules/` when:
+
+1. **User explicitly requests rule updates** - When user says "update the rules" or similar
+2. **Learning new project patterns** - When you discover new build commands, workflows, or project-specific practices
+3. **Correcting outdated information** - When existing rules contain incorrect or outdated information
+4. **Adding missing critical information** - When you encounter important project knowledge not captured in rules
+
+## How to Update Rules
+
+### When to Update:
+- User provides corrections to existing workflow instructions
+- You discover new Makefile targets or build procedures
+- Project structure changes (new components, directories, etc.)
+- New testing procedures or quality checks are introduced
+- Dependency management changes
+- New coding standards or conventions are established
+
+### Update Process:
+1. **Identify the change**: Clearly understand what needs to be updated
+2. **Locate the appropriate rule file**: Find the most relevant `.mdc` file in `.cursor/rules/`
+3. **Update the content**: Use the `search_replace` or `write` tool to modify the rule
+4. **Maintain metadata**: Preserve the `---` frontmatter with description, globs, and alwaysApply settings
+5. **Inform the user**: Briefly mention what rule was updated and why
+
+### Update Examples:
+- If user mentions a new make target: Add it to `development-workflow.mdc`
+- If project adds new components: Update relevant globs and workflow instructions
+- If build process changes: Update the build check instructions
+- If new quality gates are added: Update the code quality checks section
+- If there are build errors that were resolved in a non-standard way: Ask the user to update the rules and provide more context
+
+## Continuous Learning
+
+- **Pay attention to user corrections** - If a user corrects your understanding of the codebase, update the rules
+- **Notice workflow patterns** - If you repeatedly encounter the same project-specific procedures, codify them in rules
+- **Track project evolution** - As the project grows and changes, keep rules current
+
+## Rule Quality Standards
+
+When updating rules:
+- Keep them under 500 lines per file
+- Use specific, actionable language
+- Include concrete examples and commands
+- Reference actual file paths and make targets
+- Avoid vague guidance - be precise and clear

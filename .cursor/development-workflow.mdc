@@ -1,0 +1,17 @@
+---
+description: Project development workflow and code quality standards
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Neo Project Development Workflow
+
+## Code Quality Checks
+
+When making code changes, always ensure the following checks pass in order:
+
+### 1. Test Check (Required)
+Ensure all tests pass based on what you're testing:
+
+- **Python Tests**: `poetry run pytest`
+  - Note: When user says "run python tests" or "run E2E tests", this refers to these tests

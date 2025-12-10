@@ -10,7 +10,6 @@ import dash
 from dash import dcc, html, Input, Output, State
 from dash.exceptions import PreventUpdate
 import numpy as np
-import plotly.express as px
 import plotly.graph_objs as go
 
 from robot_simulation import RobotParams, RobotSimulator, run_spacing_analysis
@@ -33,7 +32,7 @@ app.layout = html.Div([
                 dcc.Input(
                     id='spacing-input',
                     type='text',
-                    value='5,10,20,30,40',
+                    value='5,10,20,30,40,100,200',
                     style={'width': '100%', 'padding': '8px'}
                 ),
             ], style={'width': '30%', 'display': 'inline-block', 'marginRight': '20px'}),
@@ -146,11 +145,31 @@ def create_results_layout(
             "Lateral Std Dev (mm)": f"{analysis['lateral_std']*1000:.2f}",
             "Oscillation Freq (Hz)": f"{analysis['oscillation_frequency']:.2f}",
             "Growing": "Yes" if analysis["is_growing"] else "No",
+            "Max Force (kN)": f"{analysis['max_contact_force']/1000:.2f}",
+            "Energy (J)": f"{analysis['energy_imparted']:.1f}",
+            "Climb Risk": f"{analysis['climbing_risk']*100:.0f}%",
+            "Issues": ", ".join([
+                "Excessive Force" if analysis["excessive_force"] else "",
+                "High Energy" if analysis["high_energy"] else "",
+                "Climbing Risk" if analysis["climbing_risk_high"] else "",
+            ]).strip(", "),
         })
     
     # 1. Lateral position over time (all spacings)
     fig1 = go.Figure()
-    colors = px.colors.qualitative.Set1
+    # Color palette (replaces plotly.express colors)
+    colors = [
+        "#1f77b4",  # blue
+        "#ff7f0e",  # orange
+        "#2ca02c",  # green
+        "#d62728",  # red
+        "#9467bd",  # purple
+        "#8c564b",  # brown
+        "#e377c2",  # pink
+        "#7f7f7f",  # gray
+        "#bcbd22",  # olive
+        "#17becf",  # cyan
+    ]
     for i, spacing_mm in enumerate(spacings):
         t = results[spacing_mm]["time"]
         y = results[spacing_mm]["state"][:, 1] * 1000  # Convert to mm
@@ -282,6 +301,84 @@ def create_results_layout(
         height=400,
         template="plotly_white",
     )
+
+    # 6. Maximum contact force chart
+    fig6 = go.Figure()
+    max_forces = [results[s]["analysis"]["max_contact_force"] / 1000 for s in spacings]  # Convert to kN
+    colors_force = [
+        "red" if results[s]["analysis"]["excessive_force"] else "green" for s in spacings
+    ]
+
+    fig6.add_trace(
+        go.Bar(
+            x=spacing_labels,
+            y=max_forces,
+            marker_color=colors_force,
+            text=[f"{f:.1f} kN" for f in max_forces],
+            textposition="outside",
+            hovertemplate="Spacing: %{x}<br>Max Force: %{y:.1f} kN<extra></extra>",
+        )
+    )
+
+    fig6.update_layout(
+        title="Maximum Contact Force by Spacing",
+        xaxis_title="Spacing (mm)",
+        yaxis_title="Max Force (kN)",
+        height=400,
+        template="plotly_white",
+    )
+
+    # 7. Energy imparted chart
+    fig7 = go.Figure()
+    energies = [results[s]["analysis"]["energy_imparted"] for s in spacings]
+    colors_energy = [
+        "red" if results[s]["analysis"]["high_energy"] else "green" for s in spacings
+    ]
+
+    fig7.add_trace(
+        go.Bar(
+            x=spacing_labels,
+            y=energies,
+            marker_color=colors_energy,
+            text=[f"{e:.1f} J" for e in energies],
+            textposition="outside",
+            hovertemplate="Spacing: %{x}<br>Energy: %{y:.1f} J<extra></extra>",
+        )
+    )
+
+    fig7.update_layout(
+        title="Energy Imparted to Rails by Spacing",
+        xaxis_title="Spacing (mm)",
+        yaxis_title="Energy (J)",
+        height=400,
+        template="plotly_white",
+    )
+
+    # 8. Climbing risk chart
+    fig8 = go.Figure()
+    climb_risks = [results[s]["analysis"]["climbing_risk"] * 100 for s in spacings]  # Convert to %
+    colors_climb = [
+        "red" if results[s]["analysis"]["climbing_risk_high"] else "green" for s in spacings
+    ]
+
+    fig8.add_trace(
+        go.Bar(
+            x=spacing_labels,
+            y=climb_risks,
+            marker_color=colors_climb,
+            text=[f"{r:.0f}%" for r in climb_risks],
+            textposition="outside",
+            hovertemplate="Spacing: %{x}<br>Climbing Risk: %{y:.0f}%<extra></extra>",
+        )
+    )
+
+    fig8.update_layout(
+        title="Climbing Risk by Spacing",
+        xaxis_title="Spacing (mm)",
+        yaxis_title="Climbing Risk (%)",
+        height=400,
+        template="plotly_white",
+    )
     
     # Create summary table HTML
     table_rows = [
@@ -289,14 +386,19 @@ def create_results_layout(
             html.Th("Spacing (mm)"),
             html.Th("Ping-ponging"),
             html.Th("Max Lateral Dev (mm)"),
-            html.Th("Lateral Std Dev (mm)"),
-            html.Th("Oscillation Freq (Hz)"),
-            html.Th("Growing Oscillations"),
+            html.Th("Max Force (kN)"),
+            html.Th("Energy (J)"),
+            html.Th("Climb Risk"),
+            html.Th("Issues"),
         ])
     ]
 
     for row in summary_data:
         ping_color = "red" if row["Ping-ponging"] == "Yes" else "green"
+        # Color code issues
+        issues_text = row["Issues"] if row["Issues"] else "None"
+        issues_color = "red" if row["Issues"] else "green"
+        
         table_rows.append(
             html.Tr([
                 html.Td(row["Spacing (mm)"]),
@@ -305,9 +407,13 @@ def create_results_layout(
                     style={"color": ping_color, "fontWeight": "bold"},
                 ),
                 html.Td(row["Max Lateral Dev (mm)"]),
-                html.Td(row["Lateral Std Dev (mm)"]),
-                html.Td(row["Oscillation Freq (Hz)"]),
-                html.Td(row["Growing"]),
+                html.Td(row["Max Force (kN)"]),
+                html.Td(row["Energy (J)"]),
+                html.Td(row["Climb Risk"]),
+                html.Td(
+                    issues_text,
+                    style={"color": issues_color, "fontWeight": "bold" if row["Issues"] else "normal"},
+                ),
             ])
         )
 
@@ -336,6 +442,22 @@ def create_results_layout(
                 ),
                 html.Div(
                     [dcc.Graph(figure=fig5)],
+                    style={"width": "48%", "display": "inline-block"},
+                ),
+            ], style={"marginBottom": "30px"}),
+            html.Div([
+                html.Div(
+                    [dcc.Graph(figure=fig6)],
+                    style={"width": "48%", "display": "inline-block", "marginRight": "2%"},
+                ),
+                html.Div(
+                    [dcc.Graph(figure=fig7)],
+                    style={"width": "48%", "display": "inline-block"},
+                ),
+            ], style={"marginBottom": "30px"}),
+            html.Div([
+                html.Div(
+                    [dcc.Graph(figure=fig8)],
                     style={"width": "48%", "display": "inline-block"},
                 ),
             ], style={"marginBottom": "30px"}),

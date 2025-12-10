@@ -25,7 +25,7 @@ class TestSimulation:
 
     def test_simulation_returns_time_and_state(self, simulator: RobotSimulator) -> None:
         """Test that simulate returns time array and state history"""
-        t, state = simulator.simulate(duration=1.0, dt=0.01)
+        t, state, _ = simulator.simulate(duration=1.0, dt=0.01)
 
         assert isinstance(t, np.ndarray)
         assert isinstance(state, np.ndarray)
@@ -36,7 +36,7 @@ class TestSimulation:
         """Test that time array covers the full duration"""
         duration = 2.0
         dt = 0.01
-        t, _ = simulator.simulate(duration=duration, dt=dt)
+        t, _, _ = simulator.simulate(duration=duration, dt=dt)
 
         assert abs(t[0] - 0.0) < 1e-6  # Starts at 0
         # Ends near duration (within one time step, accounting for floating point precision)
@@ -44,14 +44,14 @@ class TestSimulation:
 
     def test_state_shape_matches_time(self, simulator: RobotSimulator) -> None:
         """Test that state array has correct shape"""
-        t, state = simulator.simulate(duration=1.0, dt=0.01)
+        t, state, _ = simulator.simulate(duration=1.0, dt=0.01)
 
         assert state.shape[0] == len(t)  # Same number of time steps
         assert state.shape[1] == 6  # 6 state variables
 
     def test_initial_state_values(self, simulator: RobotSimulator) -> None:
         """Test that initial state matches expected values"""
-        t, state = simulator.simulate(duration=1.0, dt=0.01)
+        t, state, _ = simulator.simulate(duration=1.0, dt=0.01)
 
         initial_state = state[0]
 
@@ -64,7 +64,7 @@ class TestSimulation:
 
     def test_robot_moves_forward(self, simulator: RobotSimulator) -> None:
         """Test that robot moves forward over time"""
-        t, state = simulator.simulate(duration=2.0, dt=0.01)
+        t, state, _ = simulator.simulate(duration=2.0, dt=0.01)
 
         x_positions = state[:, 0]
 
@@ -73,7 +73,7 @@ class TestSimulation:
 
     def test_robot_accelerates_to_max_speed(self, simulator: RobotSimulator) -> None:
         """Test that robot accelerates up to max speed"""
-        t, state = simulator.simulate(duration=5.0, dt=0.01)
+        t, state, _ = simulator.simulate(duration=5.0, dt=0.01)
 
         vx_velocities = state[:, 3]
 
@@ -85,8 +85,8 @@ class TestSimulation:
         sim_small = RobotSimulator(params, spacing=0.010, initial_theta=0.001)
         sim_large = RobotSimulator(params, spacing=0.010, initial_theta=0.05)
 
-        _, state_small = sim_small.simulate(duration=1.0, dt=0.01)
-        _, state_large = sim_large.simulate(duration=1.0, dt=0.01)
+        _, state_small, _ = sim_small.simulate(duration=1.0, dt=0.01)
+        _, state_large, _ = sim_large.simulate(duration=1.0, dt=0.01)
 
         # Larger initial misalignment should lead to different behavior
         # Check that angular positions differ
@@ -98,8 +98,8 @@ class TestSimulation:
         sim_5mm = RobotSimulator(params, spacing=0.005, initial_theta=0.05)
         sim_20mm = RobotSimulator(params, spacing=0.020, initial_theta=0.05)
 
-        _, state_5mm = sim_5mm.simulate(duration=3.0, dt=0.01)
-        _, state_20mm = sim_20mm.simulate(duration=3.0, dt=0.01)
+        _, state_5mm, _ = sim_5mm.simulate(duration=3.0, dt=0.01)
+        _, state_20mm, _ = sim_20mm.simulate(duration=3.0, dt=0.01)
 
         # Different spacing should lead to different lateral behavior
         # Check that simulations complete and produce valid results
@@ -119,7 +119,7 @@ class TestSimulation:
 
     def test_simulation_stability(self, simulator: RobotSimulator) -> None:
         """Test that simulation doesn't produce NaN or infinite values"""
-        t, state = simulator.simulate(duration=10.0, dt=0.01)
+        t, state, _ = simulator.simulate(duration=10.0, dt=0.01)
 
         # Check for NaN
         assert not np.any(np.isnan(state))
@@ -131,8 +131,8 @@ class TestSimulation:
 
     def test_time_step_affects_resolution(self, simulator: RobotSimulator) -> None:
         """Test that smaller time steps provide more resolution"""
-        t_coarse, state_coarse = simulator.simulate(duration=1.0, dt=0.1)
-        t_fine, state_fine = simulator.simulate(duration=1.0, dt=0.01)
+        t_coarse, state_coarse, _ = simulator.simulate(duration=1.0, dt=0.1)
+        t_fine, state_fine, _ = simulator.simulate(duration=1.0, dt=0.01)
 
         # Fine simulation should have more time steps
         assert len(t_fine) > len(t_coarse)
