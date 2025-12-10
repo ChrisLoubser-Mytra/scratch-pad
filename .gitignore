@@ -1,0 +1,48 @@
+# Ignore the build directory
+/build/
+.cache/
+/the_matrix/**.py
+/the_matrix/**.proto
+**.pyc
+# Ignore files with these extensions
+*.log
+*.tmp
+*.DS_Store
+*.su
+*.d
+*.o
+*.cyclo
+*.elf
+*.map
+*.bin
+*.launch
+*.pyc
+*.tar.xz
+*.mk
+**.egg-info/
+*.so
+*.stamp
+*.mxproject
+*.project
+coverage-report/
+.coverage
+.coverage*
+
+
+
+# Linter + Code formatter artifacts
+*.uncrustify
+uncrustify_locked_up_files.txt
+**.ctu-info
+**.cpp.*.dump
+.mypy_cache
+.ruff_cache
+
+# Python cruft
+__pycache__
+.pytest_cache
+*.pyc
+.venv/
+
+
+.history/
