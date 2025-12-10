@@ -12,7 +12,12 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objs as go
 
-from robot_simulation import RobotParams, RobotSimulator, run_spacing_analysis
+from robot_simulation import (
+    RobotParams,
+    RobotSimulator,
+    run_spacing_analysis,
+    skew_mm_to_theta,
+)
 
 
 # Initialize Dash app
@@ -25,6 +30,8 @@ app.layout = html.Div([
         html.H1("Mytra Robot Guide Wheel Spacing Analysis", 
                 style={'textAlign': 'center', 'marginBottom': '30px'}),
         
+        html.Div(id='parameters-table-container', style={'marginBottom': '30px'}),
+        
         html.Div([
             html.Div([
                 html.Label("Spacing Values (mm, comma-separated):", 
@@ -32,7 +39,7 @@ app.layout = html.Div([
                 dcc.Input(
                     id='spacing-input',
                     type='text',
-                    value='5,10,20,30,40,100,200',
+                    value='5,10,13,20,30,40,100,200',
                     style={'width': '100%', 'padding': '8px'}
                 ),
             ], style={'width': '30%', 'display': 'inline-block', 'marginRight': '20px'}),
@@ -52,17 +59,21 @@ app.layout = html.Div([
             ], style={'width': '20%', 'display': 'inline-block', 'marginRight': '20px'}),
             
             html.Div([
-                html.Label("Initial Misalignment (rad):", 
+                html.Label("Front-to-Back Skew (mm):", 
                           style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                dcc.Input(
-                    id='theta-input',
-                    type='number',
-                    value=0.01,
-                    min=0.0,
-                    max=0.1,
-                    step=0.001,
-                    style={'width': '100%', 'padding': '8px'}
-                ),
+                html.Div([
+                    dcc.Input(
+                        id='skew-input',
+                        type='number',
+                        value=10.0,
+                        min=0.0,
+                        max=50.0,
+                        step=0.5,
+                        style={'width': '100%', 'padding': '8px'}
+                    ),
+                    html.Small("Lateral offset between front and back of robot", 
+                              style={'color': '#666', 'fontSize': '11px', 'display': 'block', 'marginTop': '2px'})
+                ]),
             ], style={'width': '20%', 'display': 'inline-block', 'marginRight': '20px'}),
             
             html.Button('Run Simulation', id='run-button', 
@@ -86,12 +97,179 @@ app.layout = html.Div([
 
 
 @app.callback(
+    [Output("parameters-table-container", "children")],
+    [Input("run-button", "n_clicks")],
+    prevent_initial_call=False,
+)
+def update_parameters_table(n_clicks: int | None) -> list[Any]:
+    """Create parameters table with realistic material property comparisons"""
+    # Get actual parameter values from the simulation
+    params = RobotParams()
+    
+    # Create a simulator instance to get contact model parameters
+    # Use default spacing of 0.01m (10mm) for reference
+    simulator = RobotSimulator(params, spacing=0.01, initial_theta=0.01)
+    
+    # Define realistic value ranges based on material properties
+    # Values based on: steel racking systems, hard rubber AMR wheels
+    parameters_data = [
+        {
+            "Parameter": "Robot Mass",
+            "Current Value": f"{params.robot_mass:.1f} kg ({params.robot_mass*2.20462:.0f} lbs)",
+            "Realistic Range": "200-300 kg (440-660 lbs) for AMR",
+            "Realistic": "Yes" if 200 <= params.robot_mass <= 300 else "Marginal",
+            "Notes": "Typical AMR base weight"
+        },
+        {
+            "Parameter": "Max Pallet Mass",
+            "Current Value": f"{params.max_pallet_mass:.1f} kg ({params.max_pallet_mass*2.20462:.0f} lbs)",
+            "Realistic Range": "1000-1500 kg (2200-3300 lbs) for standard pallets",
+            "Realistic": "Yes" if 1000 <= params.max_pallet_mass <= 1500 else "Marginal",
+            "Notes": "Standard pallet capacity"
+        },
+        {
+            "Parameter": "Wheel Diameter",
+            "Current Value": f"{params.wheel_diameter*1000:.0f} mm",
+            "Realistic Range": "200-400 mm for AMR wheels",
+            "Realistic": "Yes" if 200 <= params.wheel_diameter*1000 <= 400 else "No",
+            "Notes": "Hard rubber wheels for AMRs"
+        },
+        {
+            "Parameter": "Guide Wheel Width",
+            "Current Value": f"{params.guide_wheel_width*1000:.0f} mm",
+            "Realistic Range": "50-100 mm for guide wheels",
+            "Realistic": "Yes" if 50 <= params.guide_wheel_width*1000 <= 100 else "No",
+            "Notes": "Typical guide wheel width"
+        },
+        {
+            "Parameter": "Max Speed",
+            "Current Value": f"{params.max_speed:.2f} m/s ({params.max_speed*3.28084:.1f} ft/s)",
+            "Realistic Range": "1.0-2.0 m/s (3.3-6.6 ft/s) for warehouse AMRs",
+            "Realistic": "Yes" if 1.0 <= params.max_speed <= 2.0 else "No",
+            "Notes": "Typical warehouse robot speed"
+        },
+        {
+            "Parameter": "Acceleration",
+            "Current Value": f"{params.acceleration:.2f} m/s²",
+            "Realistic Range": "0.5-1.0 m/s² for smooth acceleration",
+            "Realistic": "Yes" if 0.5 <= params.acceleration <= 1.0 else "No",
+            "Notes": "Conservative acceleration for stability"
+        },
+        {
+            "Parameter": "Wheel Base",
+            "Current Value": f"{params.wheel_base*1000:.0f} mm ({params.wheel_base*39.3701:.1f} in)",
+            "Realistic Range": "800-1200 mm (31-47 in) for pallet-sized robots",
+            "Realistic": "Yes" if 800 <= params.wheel_base*1000 <= 1200 else "No",
+            "Notes": "Distance between front/rear wheel sets"
+        },
+        {
+            "Parameter": "Rail Flange Height",
+            "Current Value": f"{params.rail_flange_height*1000:.0f} mm",
+            "Realistic Range": "15-25 mm for steel racking flanges",
+            "Realistic": "Yes" if 15 <= params.rail_flange_height*1000 <= 25 else "No",
+            "Notes": "Standard steel racking vertical flange"
+        },
+        {
+            "Parameter": "Contact Stiffness",
+            "Current Value": f"{simulator.contact_stiffness/1e6:.1f} MN/m ({simulator.contact_stiffness:.0e} N/m)",
+            "Realistic Range": "0.5-5 MN/m for steel-on-rubber contact",
+            "Realistic": "Yes" if 0.5e6 <= simulator.contact_stiffness <= 5e6 else "Marginal",
+            "Notes": "Steel rail + hard rubber wheel contact"
+        },
+        {
+            "Parameter": "Contact Damping",
+            "Current Value": f"{simulator.contact_damping:.0f} N·s/m",
+            "Realistic Range": "500-2000 N·s/m for rubber damping",
+            "Realistic": "Yes" if 500 <= simulator.contact_damping <= 2000 else "Marginal",
+            "Notes": "Rubber wheel damping characteristics"
+        },
+        {
+            "Parameter": "Friction Coefficient",
+            "Current Value": f"{simulator.friction_coefficient:.2f}",
+            "Realistic Range": "0.2-0.5 for hard rubber on steel",
+            "Realistic": "Yes" if 0.2 <= simulator.friction_coefficient <= 0.5 else "No",
+            "Notes": "Hard rubber wheel on steel rail"
+        },
+        {
+            "Parameter": "Max Safe Contact Force",
+            "Current Value": f"{simulator.max_safe_contact_force/1000:.0f} kN ({simulator.max_safe_contact_force:.0f} N)",
+            "Realistic Range": "30-100 kN for steel racking rails",
+            "Realistic": "Yes" if 30000 <= simulator.max_safe_contact_force <= 100000 else "Marginal",
+            "Notes": "Steel racking structural limit"
+        },
+        {
+            "Parameter": "Climbing Force Threshold",
+            "Current Value": f"{simulator.climbing_force_threshold:.1f} × weight",
+            "Realistic Range": "0.3-0.5 × weight for stability",
+            "Realistic": "Yes" if 0.3 <= simulator.climbing_force_threshold <= 0.5 else "Marginal",
+            "Notes": "Fraction of weight that could lift robot"
+        },
+    ]
+    
+    # Create table rows
+    table_rows = [
+        html.Tr([
+            html.Th("Parameter", style={"textAlign": "left", "padding": "8px"}),
+            html.Th("Current Value", style={"textAlign": "left", "padding": "8px"}),
+            html.Th("Realistic Range", style={"textAlign": "left", "padding": "8px"}),
+            html.Th("Realistic?", style={"textAlign": "center", "padding": "8px"}),
+            html.Th("Notes", style={"textAlign": "left", "padding": "8px"}),
+        ])
+    ]
+    
+    for param in parameters_data:
+        realistic_color = (
+            "green" if param["Realistic"] == "Yes"
+            else "orange" if param["Realistic"] == "Marginal"
+            else "red"
+        )
+        table_rows.append(
+            html.Tr([
+                html.Td(param["Parameter"], style={"padding": "8px", "fontWeight": "bold"}),
+                html.Td(param["Current Value"], style={"padding": "8px"}),
+                html.Td(param["Realistic Range"], style={"padding": "8px"}),
+                html.Td(
+                    param["Realistic"],
+                    style={"padding": "8px", "color": realistic_color, "fontWeight": "bold", "textAlign": "center"},
+                ),
+                html.Td(param["Notes"], style={"padding": "8px", "fontSize": "12px", "color": "#666"}),
+            ])
+        )
+    
+    return [
+        html.Div([
+            html.H2("Simulation Parameters", style={"marginBottom": "15px"}),
+            html.P(
+                "Comparison of simulation parameters with realistic material properties for steel racking systems and hard rubber AMR wheels.",
+                style={"marginBottom": "15px", "color": "#666"},
+            ),
+            html.Table(
+                table_rows,
+                style={
+                    "width": "100%",
+                    "borderCollapse": "collapse",
+                    "border": "1px solid #ddd",
+                    "marginBottom": "20px",
+                    "fontSize": "14px",
+                },
+            ),
+            html.Div([
+                html.Span("Legend: ", style={"fontWeight": "bold"}),
+                html.Span("Yes", style={"color": "green", "fontWeight": "bold", "marginRight": "15px"}),
+                html.Span("Marginal", style={"color": "orange", "fontWeight": "bold", "marginRight": "15px"}),
+                html.Span("No", style={"color": "red", "fontWeight": "bold"}),
+            ], style={"fontSize": "12px", "marginBottom": "20px"}),
+        ], style={"marginBottom": "30px", "padding": "20px", "backgroundColor": "#f9f9f9", "borderRadius": "10px"}),
+    ]
+
+
+@app.callback(
     [Output("results-container", "children"), Output("status-message", "children")],
     [Input("run-button", "n_clicks")],
-    [State("spacing-input", "value"), State("duration-input", "value"), State("theta-input", "value")],
+    [State("spacing-input", "value"), State("duration-input", "value"), State("skew-input", "value")],
 )
 def update_results(
-    n_clicks: int | None, spacing_str: str, duration: float, initial_theta: float
+    n_clicks: int | None, spacing_str: str, duration: float, initial_skew_mm: float
 ) -> tuple[Any, Any]:
     """Run simulation and update results"""
     if n_clicks is None:
@@ -108,14 +286,14 @@ def update_results(
                 style={"color": "red"},
             )
 
-        if initial_theta < 0 or initial_theta > 0.1:
+        if initial_skew_mm < 0 or initial_skew_mm > 50:
             return [], html.Div(
-                "Error: Initial misalignment must be between 0 and 0.1 rad.",
+                "Error: Front-to-back skew must be between 0 and 50 mm.",
                 style={"color": "red"},
             )
 
-        # Run simulation
-        results = run_spacing_analysis(spacings, duration=duration, initial_theta=initial_theta)
+        # Run simulation (converts skew_mm to theta internally)
+        results = run_spacing_analysis(spacings, duration=duration, initial_skew_mm=initial_skew_mm)
 
         # Create visualizations
         status_msg = html.Div(
@@ -200,14 +378,18 @@ def create_results_layout(
     fig2 = go.Figure()
     for i, spacing_mm in enumerate(spacings):
         t = results[spacing_mm]["time"]
-        theta = results[spacing_mm]["state"][:, 2] * 180 / np.pi  # Convert to degrees
+        theta_rad = results[spacing_mm]["state"][:, 2]
+        # Convert to degrees and wrap to [-180, 180] for readability
+        theta_deg = np.degrees(theta_rad)
+        # Wrap to reasonable range (keep within ±180 degrees for display)
+        theta_deg = np.mod(theta_deg + 180, 360) - 180
         analysis = results[spacing_mm]["analysis"]
         color = "red" if analysis["is_ping_ponging"] else colors[i % len(colors)]
 
         fig2.add_trace(
             go.Scatter(
                 x=t,
-                y=theta,
+                y=theta_deg,
                 mode="lines",
                 name=f"{spacing_mm}mm",
                 line=dict(color=color, width=2),

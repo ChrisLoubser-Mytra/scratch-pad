@@ -75,8 +75,8 @@ class TestContactForces:
         y1 = -0.01  # Small penetration
         y2 = -0.02  # Larger penetration
 
-        force1, _ = simulator_5mm.contact_force(y=y1, vy=0.0)
-        force2, _ = simulator_5mm.contact_force(y=y2, vy=0.0)
+        force1, _, _, _ = simulator_5mm.contact_force(y=y1, vy=0.0)
+        force2, _, _, _ = simulator_5mm.contact_force(y=y2, vy=0.0)
 
         assert force2 > force1
 
@@ -86,8 +86,8 @@ class TestContactForces:
         vy_positive = 0.1  # Moving right
         vy_negative = -0.1  # Moving left
 
-        force1, _ = simulator_5mm.contact_force(y=y, vy=vy_positive)
-        force2, _ = simulator_5mm.contact_force(y=y, vy=vy_negative)
+        force1, _, _, _ = simulator_5mm.contact_force(y=y, vy=vy_positive)
+        force2, _, _, _ = simulator_5mm.contact_force(y=y, vy=vy_negative)
 
         # Force should be different due to damping
         assert force1 != force2
@@ -97,7 +97,7 @@ class TestContactForces:
         y = -0.01  # Left wheel contacting
         vy = 0.1  # Moving right (positive)
 
-        force_left, _ = simulator_5mm.contact_force(y=y, vy=vy)
+        force_left, _, _, _ = simulator_5mm.contact_force(y=y, vy=vy)
 
         # Friction should add to the force when moving away from contact
         assert force_left > 0
@@ -108,8 +108,8 @@ class TestContactForces:
         vy_low = 0.001  # Very low velocity (below threshold)
         vy_zero = 0.0
 
-        force1, _ = simulator_5mm.contact_force(y=y, vy=vy_low)
-        force2, _ = simulator_5mm.contact_force(y=y, vy=vy_zero)
+        force1, _, _, _ = simulator_5mm.contact_force(y=y, vy=vy_low)
+        force2, _, _, _ = simulator_5mm.contact_force(y=y, vy=vy_zero)
 
         # Forces should be very similar (friction should be negligible)
         # Damping will cause a small difference: contact_damping * vy = 1000 * 0.001 = 1.0
@@ -117,13 +117,16 @@ class TestContactForces:
 
     def test_larger_spacing_allows_more_movement(self, simulator_5mm: RobotSimulator, simulator_20mm: RobotSimulator) -> None:
         """Test that larger spacing allows more movement before contact"""
+        # For 5mm spacing: rail_width = 80mm, flanges at ±40mm
+        # For 20mm spacing: rail_width = 110mm, flanges at ±55mm
+        # At y=10mm: 5mm spacing will have contact, 20mm might not
         y = 0.01  # 10mm offset
 
-        _, force_right_5mm = simulator_5mm.contact_force(y=y, vy=0.0)
-        _, force_right_20mm = simulator_20mm.contact_force(y=y, vy=0.0)
+        _, force_right_5mm, _, _ = simulator_5mm.contact_force(y=y, vy=0.0)
+        _, force_right_20mm, _, _ = simulator_20mm.contact_force(y=y, vy=0.0)
 
-        # 5mm spacing should have contact, 20mm might not
-        # This depends on wheel_base, but 5mm should have more force
+        # 5mm spacing should have contact at this position, 20mm might not
+        # 5mm spacing has smaller rail width, so contact occurs earlier
         assert force_right_5mm >= force_right_20mm
 
     def test_rail_width_calculation(self, simulator_5mm: RobotSimulator, simulator_20mm: RobotSimulator) -> None:

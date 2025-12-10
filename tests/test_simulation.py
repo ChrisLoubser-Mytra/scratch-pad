@@ -56,7 +56,8 @@ class TestSimulation:
         initial_state = state[0]
 
         assert abs(initial_state[0]) < 1e-6  # x = 0
-        assert abs(initial_state[1]) < 1e-6  # y = 0
+        # y may have initial offset to ensure contact (for small spacings)
+        assert initial_state[1] >= 0  # y >= 0 (offset toward right flange)
         assert abs(initial_state[2] - simulator.initial_theta) < 1e-6  # theta = initial_theta
         assert abs(initial_state[3]) < 1e-6  # vx = 0
         assert abs(initial_state[4]) < 1e-6  # vy = 0

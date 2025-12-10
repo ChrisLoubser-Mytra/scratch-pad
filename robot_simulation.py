@@ -195,8 +195,18 @@ class RobotSimulator:
         # Torque from lateral forces (lever arm is half the guide wheel width)
         torque = (force_right - force_left) * self.params.guide_wheel_width / 2
 
+        # Angular damping - prevents unbounded spinning
+        # Damping proportional to angular velocity (linear) plus quadratic term for high velocities
+        # Higher damping for larger spacings where oscillations are more likely
+        base_damping = 200.0  # N·m·s/rad (base linear damping)
+        if self.spacing > 0.05:  # Increase damping for larger spacings
+            base_damping = 300.0 + 1000.0 * self.spacing  # Scale with spacing
+        angular_damping_linear = base_damping
+        angular_damping_quadratic = 1000.0  # N·m·s²/rad² (quadratic damping for high velocities)
+        damping_torque = -angular_damping_linear * omega - angular_damping_quadratic * omega * abs(omega)
+
         # Angular acceleration
-        alpha = torque / self.params.moment_of_inertia
+        alpha = (torque + damping_torque) / self.params.moment_of_inertia
 
         # Coupling: lateral motion affects orientation and vice versa
         # If moving forward with misalignment, there's a coupling
@@ -228,19 +238,23 @@ class RobotSimulator:
         t = np.arange(0, duration, dt)
 
         # Initial state: slight misalignment
-        # For large spacings, add initial lateral offset to ensure contact can occur
+        # Add initial lateral offset to ensure contact occurs for all spacings
         # The robot will drift laterally due to misalignment as it moves forward
-        # For large spacings, start at a position where contact will occur
-        initial_y_offset = 0.0
+        # Start at a position where contact will occur
+        # Contact threshold: position where wheel edge just touches flange
+        # Right flange at: rail_width/2
+        # Right wheel edge at: y + guide_wheel_width/2
+        # Contact when: y + guide_wheel_width/2 >= rail_width/2
+        # So: y >= rail_width/2 - guide_wheel_width/2
+        contact_threshold = self.rail_width / 2 - self.params.guide_wheel_width / 2
+        
         if self.spacing > 0.05:  # >50mm spacing
-            # Contact occurs when wheel edge exceeds flange position
-            # Right flange at: rail_width/2 = (guide_wheel_width + 2*spacing)/2
-            # Right wheel edge at: y + guide_wheel_width/2
-            # Contact when: y + guide_wheel_width/2 > rail_width/2
-            # So: y > rail_width/2 - guide_wheel_width/2
-            # Start just past this threshold to ensure contact
-            contact_threshold = self.rail_width / 2 - self.params.guide_wheel_width / 2
-            initial_y_offset = contact_threshold + 0.01  # 10mm past threshold to ensure contact
+            # Large spacing: start just past contact threshold to ensure contact
+            initial_y_offset = contact_threshold + 0.01  # 10mm past threshold
+        else:
+            # Small spacing: start at contact threshold to ensure contact occurs
+            # This puts the wheel edge exactly at the flange
+            initial_y_offset = contact_threshold + 0.001  # 1mm past to ensure contact
         
         initial_state = np.array([
             0.0,  # x
@@ -301,10 +315,17 @@ class RobotSimulator:
         
         # Energy imparted to rails (integral of force * velocity)
         # Power = force * velocity, Energy = integral of power
-        power_left = force_left * np.abs(vy) * np.sign(force_left)  # Only when moving into contact
-        power_right = force_right * np.abs(vy) * np.sign(-force_right)
+        # Energy is imparted when force and velocity are in the same direction (pushing into rail)
+        # Left rail: energy when force_left > 0 and vy < 0 (moving left into left rail)
+        # Right rail: energy when force_right > 0 and vy > 0 (moving right into right rail)
+        # Energy is imparted when force and velocity are in the same direction
+        # Left rail: force_left > 0 and vy < 0 (moving left into left rail)
+        # Right rail: force_right > 0 and vy > 0 (moving right into right rail)
+        # Power = force × velocity (use absolute velocity since direction is checked)
+        power_left = np.where((force_left > 0) & (vy < 0), force_left * (-vy), 0.0)  # vy negative, so -vy positive
+        power_right = np.where((force_right > 0) & (vy > 0), force_right * vy, 0.0)  # vy positive
         total_power = power_left + power_right
-        energy_imparted = float(np.trapz(np.maximum(total_power, 0), t))  # Only positive energy (into rails)
+        energy_imparted = float(np.trapz(total_power, t))  # Total energy imparted to rails
 
         # Climbing risk analysis
         # Check if penetration approaches flange height (20mm)
@@ -378,8 +399,23 @@ class RobotSimulator:
         }
 
 
+def skew_mm_to_theta(skew_mm: float, wheel_base_m: float = 0.96) -> float:
+    """
+    Convert front-to-back skew in mm to angular misalignment in radians
+    
+    Args:
+        skew_mm: Lateral offset between front and back of robot (mm)
+        wheel_base_m: Distance between front and back wheels (m)
+        
+    Returns:
+        Angular misalignment in radians
+    """
+    # For small angles: theta ≈ tan(theta) = skew / wheel_base
+    return skew_mm / 1000.0 / wheel_base_m
+
+
 def run_spacing_analysis(
-    spacings_mm: list[float], duration: float = 10.0, initial_theta: float = 0.01
+    spacings_mm: list[float], duration: float = 10.0, initial_skew_mm: float = 10.0
 ) -> Dict[float, Dict[str, Any]]:
     """
     Run simulation for multiple spacing values
@@ -387,12 +423,14 @@ def run_spacing_analysis(
     Args:
         spacings_mm: List of spacing values in millimeters
         duration: Simulation duration in seconds
-        initial_theta: Initial angular misalignment in radians
+        initial_skew_mm: Initial front-to-back skew in millimeters
 
     Returns:
         Dictionary with results for each spacing
     """
+    # Convert skew in mm to angular misalignment in radians
     params = RobotParams()
+    initial_theta = skew_mm_to_theta(initial_skew_mm, params.wheel_base)
     results: Dict[float, Dict[str, Any]] = {}
 
     for spacing_mm in spacings_mm:
@@ -415,8 +453,8 @@ def run_spacing_analysis(
 
 if __name__ == "__main__":
     # Test simulation
-    spacings = [5, 10, 20, 30, 40, 100, 200]  # mm
-    results = run_spacing_analysis(spacings, duration=10.0)
+    spacings = [5, 10, 13, 20, 30, 40, 100, 200]  # mm
+    results = run_spacing_analysis(spacings, duration=10.0, initial_skew_mm=10.0)
 
     # Print results
     print("Spacing Analysis Results:")

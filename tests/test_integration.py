@@ -50,7 +50,7 @@ class TestIntegration:
         """Test that different spacing values produce different results"""
         spacings = [5.0, 20.0]
         # Use larger initial misalignment and longer duration to ensure differences
-        results = run_spacing_analysis(spacings, duration=5.0, initial_theta=0.05)
+        results = run_spacing_analysis(spacings, duration=5.0, initial_skew_mm=48.0)  # ~0.05 rad = ~48mm skew
 
         analysis_5mm = results[5.0]["analysis"]
         analysis_20mm = results[20.0]["analysis"]
@@ -96,8 +96,8 @@ class TestIntegration:
         """Test that custom initial misalignment affects results"""
         spacings = [10.0]
 
-        results_small = run_spacing_analysis(spacings, duration=1.0, initial_theta=0.001)
-        results_large = run_spacing_analysis(spacings, duration=1.0, initial_theta=0.05)
+        results_small = run_spacing_analysis(spacings, duration=1.0, initial_skew_mm=1.0)  # ~0.001 rad
+        results_large = run_spacing_analysis(spacings, duration=1.0, initial_skew_mm=48.0)  # ~0.05 rad
 
         # Different initial conditions should lead to different behavior
         analysis_small = results_small[10.0]["analysis"]
@@ -123,7 +123,7 @@ class TestIntegration:
     def test_state_data_shape(self) -> None:
         """Test that state data has correct shape"""
         spacings = [10.0]
-        results = run_spacing_analysis(spacings, duration=1.0, initial_theta=0.01)
+        results = run_spacing_analysis(spacings, duration=1.0, initial_skew_mm=10.0)  # ~0.01 rad
 
         time = results[10.0]["time"]
         state = results[10.0]["state"]
@@ -145,8 +145,8 @@ class TestIntegration:
         """Test that running the same analysis twice produces similar results"""
         spacings = [10.0]
 
-        results1 = run_spacing_analysis(spacings, duration=1.0, initial_theta=0.01)
-        results2 = run_spacing_analysis(spacings, duration=1.0, initial_theta=0.01)
+        results1 = run_spacing_analysis(spacings, duration=1.0, initial_skew_mm=10.0)
+        results2 = run_spacing_analysis(spacings, duration=1.0, initial_skew_mm=10.0)
 
         analysis1 = results1[10.0]["analysis"]
         analysis2 = results2[10.0]["analysis"]

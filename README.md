@@ -17,7 +17,7 @@ The simulation answers the critical question: **How much spacing can be allowed 
 ## Features
 
 - **Physics-based simulation** using ODE integration
-- **Multiple spacing analysis** (5mm, 10mm, 20mm, 30mm, 40mm, 100mm, 200mm, or custom values)
+- **Multiple spacing analysis** (5mm, 10mm, 13mm, 20mm, 30mm, 40mm, 100mm, 200mm, or custom values)
 - **Stability detection** to identify ping-ponging behavior
 - **Interactive web dashboard** with real-time visualization
 - **Comprehensive analysis** including:
