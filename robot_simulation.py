@@ -26,6 +26,10 @@ class RobotParams:
     # Guide wheels (horizontal, contact flanges)
     guide_wheel_diameter: float = 0.08  # m (80mm)
     guide_wheel_width: float = 0.016  # m (16mm, width of guide wheel contacting flange)
+    guide_wheel_separation: float = 0.464  # m (464mm, distance between guide wheels on same side)
+    # Robot body dimensions
+    robot_body_height: float = 0.192  # m (192mm tall)
+    robot_body_clearance: float = 0.02  # m (20mm above bottom of wheels)
     # Legacy parameters (kept for compatibility, calculated from above)
     wheel_diameter: float = 0.1  # m (100mm, same as drive_wheel_diameter)
     guide_wheel_width: float = 0.016  # m (16mm, same as guide_wheel_width)
@@ -33,7 +37,10 @@ class RobotParams:
     acceleration: float = 0.75  # m/s²
     wheel_base: float = 1.2  # m (1200mm, distance between outside faces of wheels)
     moment_of_inertia: float = 0.0  # Will be calculated
-    rail_flange_height: float = 0.02  # m (20mm vertical flange height)
+    rail_flange_height: float = 0.01905  # m (0.75 inches = 19.05mm vertical flange height)
+    rail_horizontal_width: float = 0.06604  # m (2.6 inches = 66.04mm horizontal surface width)
+    guide_wheel_separation_across: float = 1.1192  # m (1119.2mm, distance between guide wheels on left and right sides)
+    flange_separation_fixed: float = 1.2192  # m (48 inches = 1219.2mm, fixed distance between vertical flanges)
 
     def __post_init__(self) -> None:
         """Calculate derived parameters"""
@@ -73,14 +80,27 @@ class RobotSimulator:
         self.spacing = spacing  # Gap in meters between guide wheel and flange
         self.initial_theta = initial_theta
         
-        # Robot sits on top of two mirror-image rails
-        # Each rail has a vertical flange that the guide wheels contact
-        # The guide wheels are on the outside of the robot
-        # Distance between the two flanges = guide_wheel_width + 2*spacing
-        # Where guide_wheel_width is the width of the guide wheel (16mm)
-        robot_width = params.guide_wheel_width  # Width of guide wheel (16mm)
-        self.flange_separation = robot_width + 2 * spacing  # Distance between the two flanges
+        # Robot drives between two L-shaped rails
+        # Rails have horizontal surfaces (2.6" wide) that the drive wheels run on
+        # Vertical flanges (0.75" tall) extend upward from the inner edges
+        # The L's face toward each other (horizontal parts face inward)
+        # Guide wheels contact the vertical flanges from the inside
+        
+        # Fixed geometry:
+        # - Flanges are 48 inches (1219.2mm) apart (fixed)
+        # - Guide wheels are 1119.2mm apart (fixed, not centered)
+        # - Spacing = gap between guide wheel and flange
+        
+        # Guide wheel positions (fixed, not centered)
+        self.guide_wheel_left_pos = -params.guide_wheel_separation_across / 2  # Left guide wheel position
+        self.guide_wheel_right_pos = params.guide_wheel_separation_across / 2  # Right guide wheel position
+        
+        # Flange positions (fixed)
+        self.flange_separation = params.flange_separation_fixed  # 1219.2mm fixed
         # Left flange at y = -flange_separation/2, right flange at y = +flange_separation/2
+        
+        # For reference: when spacing = 0, guide wheels would be at flanges
+        # Current spacing = (flange_separation - guide_wheel_separation) / 2 = (1219.2 - 1119.2) / 2 = 50mm
 
         # Contact force parameters
         # These may need adjustment for larger spacings:
@@ -109,22 +129,28 @@ class RobotSimulator:
             Tuple of (force_left, force_right, penetration_left, penetration_right) in Newtons and meters
         """
         # Robot center is at y=0
-        # Guide wheels are on the outside of the robot
-        # Left guide wheel outer edge at y = -guide_wheel_width/2
-        # Right guide wheel outer edge at y = +guide_wheel_width/2
-        # Two mirror-image rails with vertical flanges
-        # Left flange at y = -flange_separation/2
-        # Right flange at y = +flange_separation/2
+        # Guide wheels are at fixed positions relative to robot center
+        # Left guide wheel center at y = guide_wheel_left_pos (negative, e.g., -559.6mm)
+        # Right guide wheel center at y = guide_wheel_right_pos (positive, e.g., +559.6mm)
+        # Guide wheels contact flanges from the inside
         
         guide_wheel_half_width = self.params.guide_wheel_width / 2
         
-        # Account for robot's lateral position and angular misalignment
-        # For small angles, the guide wheel positions are approximately:
-        left_wheel_edge = y - guide_wheel_half_width
-        right_wheel_edge = y + guide_wheel_half_width
+        # Account for robot's lateral position (y) and angular misalignment (theta)
+        # For small angles, guide wheel positions relative to robot center:
+        # Left guide wheel center position (accounting for robot lateral position)
+        left_wheel_center = y + self.guide_wheel_left_pos
+        right_wheel_center = y + self.guide_wheel_right_pos
+        
+        # Guide wheel edges (outer edges that contact flanges)
+        # Guide wheels are on the inside, so left wheel's right edge contacts left flange
+        # Right wheel's left edge contacts right flange
+        left_wheel_contact_edge = left_wheel_center + guide_wheel_half_width  # Right edge of left wheel
+        right_wheel_contact_edge = right_wheel_center - guide_wheel_half_width  # Left edge of right wheel
 
-        left_flange_pos = -self.flange_separation / 2
-        right_flange_pos = self.flange_separation / 2
+        # Flange positions (fixed)
+        left_flange_pos = -self.flange_separation / 2  # Left flange (negative y)
+        right_flange_pos = self.flange_separation / 2  # Right flange (positive y)
         
         # For very large spacings, the robot may need significant offset to contact
         # The rail width = guide_wheel_width + 2*spacing
@@ -132,10 +158,18 @@ class RobotSimulator:
         # Flanges at ±235mm, wheels at y ± 35mm
         # Robot needs to be offset by >200mm to contact
 
-        # Calculate gaps: positive gap means wheel is inside (no contact)
-        # Negative gap means wheel has penetrated flange (contact)
-        gap_left = left_wheel_edge - left_flange_pos  # Positive if wheel edge is to the right of flange
-        gap_right = right_flange_pos - right_wheel_edge  # Positive if wheel edge is to the left of flange
+        # Calculate gaps: 
+        # Guide wheels contact flanges from the inside
+        # Left wheel's RIGHT edge contacts LEFT flange
+        # Right wheel's LEFT edge contacts RIGHT flange
+        # For left side: gap = left_wheel_contact_edge - left_flange_pos
+        #   Positive gap = wheel edge is to the right of flange (no contact, wheel is inside)
+        #   Negative gap = wheel has penetrated flange (contact, wheel is outside)
+        # For right side: gap = right_flange_pos - right_wheel_contact_edge
+        #   Positive gap = wheel edge is to the left of flange (no contact, wheel is inside)
+        #   Negative gap = wheel has penetrated flange (contact, wheel is outside)
+        gap_left = left_wheel_contact_edge - left_flange_pos  # Positive if wheel is to the right of flange (no contact)
+        gap_right = right_flange_pos - right_wheel_contact_edge  # Positive if wheel is to the left of flange (no contact)
 
         # Contact forces (only when gap is negative, i.e., wheel penetrates flange)
         force_left = 0.0
@@ -143,7 +177,7 @@ class RobotSimulator:
         penetration_left = 0.0
         penetration_right = 0.0
 
-        if gap_left < 0:  # Left wheel edge has penetrated left flange
+        if gap_left < 0:  # Left wheel has penetrated left flange (wheel is to the left of flange)
             penetration_left = -gap_left
             # Limit penetration to flange height (climbing check)
             penetration_left = min(penetration_left, self.params.rail_flange_height)
@@ -164,7 +198,7 @@ class RobotSimulator:
             )
             force_left = normal_force + friction_force
 
-        if gap_right < 0:  # Right wheel edge has penetrated right flange
+        if gap_right < 0:  # Right wheel has penetrated right flange (wheel is to the right of flange)
             penetration_right = -gap_right
             # Limit penetration to flange height (climbing check)
             penetration_right = min(penetration_right, self.params.rail_flange_height)
@@ -281,6 +315,9 @@ class RobotSimulator:
 
         # Initial state: start near center with small offset to ensure contact
         # y=0 is the center of the rails
+        # Guide wheels are at fixed positions: left at -559.6mm, right at +559.6mm
+        # Flanges are at: left at -609.6mm, right at +609.6mm
+        # Spacing = gap between guide wheel and flange
         # For small initial misalignment, start slightly off-center to trigger contact
         # Use a small fraction of the spacing to ensure contact occurs
         # For very small spacings, use a minimum offset to ensure contact
