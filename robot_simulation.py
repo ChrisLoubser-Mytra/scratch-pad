@@ -222,51 +222,68 @@ class RobotSimulator:
         ])
     
     def simulate(
-        self, duration: float = 10.0, dt: float = 0.001
+        self, duration: float = 10.0, dt: float = 0.001, max_distance: float = 10.0
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Run simulation
 
         Args:
-            duration: Simulation duration (s)
+            duration: Maximum simulation duration (s)
             dt: Time step (s)
+            max_distance: Maximum distance to travel (m) - simulation stops when reached
 
         Returns:
             Tuple of (time_array, state_history, contact_forces_history)
             contact_forces_history: [N x 4] array with [force_left, force_right, penetration_left, penetration_right]
         """
-        t = np.arange(0, duration, dt)
-
-        # Initial state: slight misalignment
-        # Add initial lateral offset to ensure contact occurs for all spacings
-        # The robot will drift laterally due to misalignment as it moves forward
-        # Start at a position where contact will occur
-        # Contact threshold: position where wheel edge just touches flange
-        # Right flange at: rail_width/2
-        # Right wheel edge at: y + guide_wheel_width/2
-        # Contact when: y + guide_wheel_width/2 >= rail_width/2
-        # So: y >= rail_width/2 - guide_wheel_width/2
-        contact_threshold = self.rail_width / 2 - self.params.guide_wheel_width / 2
+        # Calculate time needed to travel max_distance
+        # Time to accelerate: t_accel = v_max / a = 1.5 / 0.75 = 2s
+        # Distance during acceleration: d_accel = 0.5 * a * t² = 0.5 * 0.75 * 4 = 1.5m
+        # If max_distance > d_accel: remaining at constant speed
+        t_accel = self.params.max_speed / self.params.acceleration
+        d_accel = 0.5 * self.params.acceleration * t_accel**2
         
-        if self.spacing > 0.05:  # >50mm spacing
-            # Large spacing: start just past contact threshold to ensure contact
-            initial_y_offset = contact_threshold + 0.01  # 10mm past threshold
+        if max_distance <= d_accel:
+            # Only accelerating phase
+            actual_duration = np.sqrt(2 * max_distance / self.params.acceleration)
         else:
-            # Small spacing: start at contact threshold to ensure contact occurs
-            # This puts the wheel edge exactly at the flange
-            initial_y_offset = contact_threshold + 0.001  # 1mm past to ensure contact
+            # Accelerate then constant speed
+            d_constant = max_distance - d_accel
+            t_constant = d_constant / self.params.max_speed
+            actual_duration = t_accel + t_constant
+        
+        # Use the smaller of calculated duration or provided duration
+        actual_duration = min(actual_duration, duration)
+        t = np.arange(0, actual_duration, dt)
+
+        # Initial state: start near center with small offset to ensure contact
+        # y=0 is the center of the rails
+        # For small initial misalignment, start slightly off-center to trigger contact
+        # Use a small fraction of the spacing to ensure contact occurs
+        # For very small spacings, use a minimum offset to ensure contact
+        if self.spacing < 0.005:  # <5mm
+            initial_y_offset = 0.002  # 2mm minimum offset
+        else:
+            initial_y_offset = self.spacing * 0.3  # 30% of spacing for larger gaps
         
         initial_state = np.array([
             0.0,  # x
-            initial_y_offset,  # y (with offset for large spacings)
+            initial_y_offset,  # y (small offset to trigger contact)
             self.initial_theta,  # theta (small initial misalignment)
             0.0,  # vx
             0.0,  # vy
             0.0,  # omega
         ])
 
-        # Integrate ODE
+        # Integrate ODE with event detection for distance
         solution = odeint(self.dynamics, initial_state, t)
+        
+        # Stop simulation early if max_distance reached
+        x_positions = solution[:, 0]
+        if np.any(x_positions >= max_distance):
+            stop_idx = np.where(x_positions >= max_distance)[0][0] + 1
+            solution = solution[:stop_idx]
+            t = t[:stop_idx]
 
         # Calculate contact forces for each time step
         contact_forces = np.zeros((len(t), 4))
@@ -415,15 +432,16 @@ def skew_mm_to_theta(skew_mm: float, wheel_base_m: float = 0.96) -> float:
 
 
 def run_spacing_analysis(
-    spacings_mm: list[float], duration: float = 10.0, initial_skew_mm: float = 10.0
+    spacings_mm: list[float], duration: float = 10.0, initial_skew_mm: float = 10.0, max_distance: float = 10.0
 ) -> Dict[float, Dict[str, Any]]:
     """
     Run simulation for multiple spacing values
 
     Args:
         spacings_mm: List of spacing values in millimeters
-        duration: Simulation duration in seconds
+        duration: Maximum simulation duration in seconds
         initial_skew_mm: Initial front-to-back skew in millimeters
+        max_distance: Maximum distance to travel (m)
 
     Returns:
         Dictionary with results for each spacing
@@ -437,7 +455,7 @@ def run_spacing_analysis(
         spacing = spacing_mm / 1000.0  # Convert to meters
         simulator = RobotSimulator(params, spacing, initial_theta=initial_theta)
 
-        t, state, contact_forces = simulator.simulate(duration=duration)
+        t, state, contact_forces = simulator.simulate(duration=duration, max_distance=max_distance)
         analysis = simulator.analyze_stability(t, state, contact_forces)
 
         results[spacing_mm] = {
