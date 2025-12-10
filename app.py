@@ -118,6 +118,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{params.robot_mass:.1f} kg ({params.robot_mass*2.20462:.0f} lbs)",
             "Realistic Range": "200-300 kg (440-660 lbs) for AMR",
             "Realistic": "Yes" if 200 <= params.robot_mass <= 300 else "Marginal",
+            "Simulation Impact": "CRITICAL: Directly affects dynamics and contact forces",
             "Notes": "Typical AMR base weight"
         },
         {
@@ -125,27 +126,57 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{params.max_pallet_mass:.1f} kg ({params.max_pallet_mass*2.20462:.0f} lbs)",
             "Realistic Range": "1000-1500 kg (2200-3300 lbs) for standard pallets",
             "Realistic": "Yes" if 1000 <= params.max_pallet_mass <= 1500 else "Marginal",
+            "Simulation Impact": "CRITICAL: Affects total mass, moment of inertia, and climbing forces",
             "Notes": "Standard pallet capacity"
         },
         {
-            "Parameter": "Wheel Diameter",
-            "Current Value": f"{params.wheel_diameter*1000:.0f} mm",
-            "Realistic Range": "200-400 mm for AMR wheels",
-            "Realistic": "Yes" if 200 <= params.wheel_diameter*1000 <= 400 else "No",
-            "Notes": "Hard rubber wheels for AMRs"
+            "Parameter": "Drive Wheel Diameter",
+            "Current Value": f"{params.drive_wheel_diameter*1000:.0f} mm",
+            "Realistic Range": "80-150 mm for AMR drive wheels",
+            "Realistic": "Yes" if 80 <= params.drive_wheel_diameter*1000 <= 150 else "No",
+            "Notes": "Used for moment of inertia calculation; not directly in contact model"
+        },
+        {
+            "Parameter": "Drive Wheel Width",
+            "Current Value": f"{params.drive_wheel_width*1000:.1f} mm",
+            "Realistic Range": "30-50 mm for AMR wheels",
+            "Realistic": "Yes" if 30 <= params.drive_wheel_width*1000 <= 50 else "No",
+            "Notes": "Not used in simulation; informational only"
+        },
+        {
+            "Parameter": "Wheel Spacing in Set",
+            "Current Value": f"{params.wheel_spacing_in_set*1000:.0f} mm",
+            "Realistic Range": "80-150 mm typical",
+            "Realistic": "Yes" if 80 <= params.wheel_spacing_in_set*1000 <= 150 else "No",
+            "Notes": "Not used in simulation; informational only"
+        },
+        {
+            "Parameter": "Wheel Set Separation",
+            "Current Value": f"{params.wheel_set_separation*1000:.0f} mm",
+            "Realistic Range": "600-900 mm for pallet robots",
+            "Realistic": "Yes" if 600 <= params.wheel_set_separation*1000 <= 900 else "No",
+            "Notes": "Used to calculate wheel base; affects moment of inertia"
+        },
+        {
+            "Parameter": "Guide Wheel Diameter",
+            "Current Value": f"{params.guide_wheel_diameter*1000:.0f} mm",
+            "Realistic Range": "60-100 mm for guide wheels",
+            "Realistic": "Yes" if 60 <= params.guide_wheel_diameter*1000 <= 100 else "No",
+            "Notes": "Not directly in contact model; affects contact area indirectly"
         },
         {
             "Parameter": "Guide Wheel Width",
             "Current Value": f"{params.guide_wheel_width*1000:.0f} mm",
-            "Realistic Range": "50-100 mm for guide wheels",
-            "Realistic": "Yes" if 50 <= params.guide_wheel_width*1000 <= 100 else "No",
-            "Notes": "Typical guide wheel width"
+            "Realistic Range": "10-25 mm for guide wheels",
+            "Realistic": "Yes" if 10 <= params.guide_wheel_width*1000 <= 25 else "No",
+            "Notes": "CRITICAL: Directly determines flange separation and contact forces"
         },
         {
             "Parameter": "Max Speed",
             "Current Value": f"{params.max_speed:.2f} m/s ({params.max_speed*3.28084:.1f} ft/s)",
             "Realistic Range": "1.0-2.0 m/s (3.3-6.6 ft/s) for warehouse AMRs",
             "Realistic": "Yes" if 1.0 <= params.max_speed <= 2.0 else "No",
+            "Simulation Impact": "Used: Determines forward motion and coupling forces",
             "Notes": "Typical warehouse robot speed"
         },
         {
@@ -153,6 +184,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{params.acceleration:.2f} m/s²",
             "Realistic Range": "0.5-1.0 m/s² for smooth acceleration",
             "Realistic": "Yes" if 0.5 <= params.acceleration <= 1.0 else "No",
+            "Simulation Impact": "Used: Affects forward motion dynamics",
             "Notes": "Conservative acceleration for stability"
         },
         {
@@ -160,13 +192,15 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{params.wheel_base*1000:.0f} mm ({params.wheel_base*39.3701:.1f} in)",
             "Realistic Range": "800-1200 mm (31-47 in) for pallet-sized robots",
             "Realistic": "Yes" if 800 <= params.wheel_base*1000 <= 1200 else "No",
-            "Notes": "Distance between front/rear wheel sets"
+            "Simulation Impact": "CRITICAL: Used for torque calculation and moment of inertia",
+            "Notes": "Distance between outside faces of front/rear wheels"
         },
         {
             "Parameter": "Rail Flange Height",
             "Current Value": f"{params.rail_flange_height*1000:.0f} mm",
             "Realistic Range": "15-25 mm for steel racking flanges",
             "Realistic": "Yes" if 15 <= params.rail_flange_height*1000 <= 25 else "No",
+            "Simulation Impact": "CRITICAL: Limits penetration depth for climbing risk calculation",
             "Notes": "Standard steel racking vertical flange"
         },
         {
@@ -174,6 +208,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{simulator.contact_stiffness/1e6:.1f} MN/m ({simulator.contact_stiffness:.0e} N/m)",
             "Realistic Range": "0.5-5 MN/m for steel-on-rubber contact",
             "Realistic": "Yes" if 0.5e6 <= simulator.contact_stiffness <= 5e6 else "Marginal",
+            "Simulation Impact": "CRITICAL: Directly determines contact force magnitude",
             "Notes": "Steel rail + hard rubber wheel contact"
         },
         {
@@ -181,6 +216,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{simulator.contact_damping:.0f} N·s/m",
             "Realistic Range": "500-2000 N·s/m for rubber damping",
             "Realistic": "Yes" if 500 <= simulator.contact_damping <= 2000 else "Marginal",
+            "Simulation Impact": "CRITICAL: Affects oscillation damping and energy dissipation",
             "Notes": "Rubber wheel damping characteristics"
         },
         {
@@ -188,6 +224,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{simulator.friction_coefficient:.2f}",
             "Realistic Range": "0.2-0.5 for hard rubber on steel",
             "Realistic": "Yes" if 0.2 <= simulator.friction_coefficient <= 0.5 else "No",
+            "Simulation Impact": "Used: Affects energy dissipation and lateral forces",
             "Notes": "Hard rubber wheel on steel rail"
         },
         {
@@ -195,6 +232,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{simulator.max_safe_contact_force/1000:.0f} kN ({simulator.max_safe_contact_force:.0f} N)",
             "Realistic Range": "30-100 kN for steel racking rails",
             "Realistic": "Yes" if 30000 <= simulator.max_safe_contact_force <= 100000 else "Marginal",
+            "Simulation Impact": "Used: Threshold for excessive force detection",
             "Notes": "Steel racking structural limit"
         },
         {
@@ -202,6 +240,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             "Current Value": f"{simulator.climbing_force_threshold:.1f} × weight",
             "Realistic Range": "0.3-0.5 × weight for stability",
             "Realistic": "Yes" if 0.3 <= simulator.climbing_force_threshold <= 0.5 else "Marginal",
+            "Simulation Impact": "Used: Threshold for climbing risk detection",
             "Notes": "Fraction of weight that could lift robot"
         },
     ]
@@ -213,6 +252,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             html.Th("Current Value", style={"textAlign": "left", "padding": "8px"}),
             html.Th("Realistic Range", style={"textAlign": "left", "padding": "8px"}),
             html.Th("Realistic?", style={"textAlign": "center", "padding": "8px"}),
+            html.Th("Simulation Impact", style={"textAlign": "left", "padding": "8px"}),
             html.Th("Notes", style={"textAlign": "left", "padding": "8px"}),
         ])
     ]
@@ -223,6 +263,10 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
             else "orange" if param["Realistic"] == "Marginal"
             else "red"
         )
+        # Determine simulation impact
+        impact = param.get("Simulation Impact", param["Notes"])
+        impact_color = "red" if "CRITICAL" in impact or "Directly" in impact else "orange" if "affects" in impact.lower() or "Used" in impact else "gray"
+        
         table_rows.append(
             html.Tr([
                 html.Td(param["Parameter"], style={"padding": "8px", "fontWeight": "bold"}),
@@ -232,6 +276,7 @@ def update_parameters_table(n_clicks: int | None) -> list[Any]:
                     param["Realistic"],
                     style={"padding": "8px", "color": realistic_color, "fontWeight": "bold", "textAlign": "center"},
                 ),
+                html.Td(impact, style={"padding": "8px", "fontSize": "12px", "color": impact_color, "fontWeight": "bold" if impact_color != "gray" else "normal"}),
                 html.Td(param["Notes"], style={"padding": "8px", "fontSize": "12px", "color": "#666"}),
             ])
         )
@@ -313,21 +358,130 @@ def create_robot_diagram() -> go.Figure:
     """Create a top-down diagram of the robot and rails with dimensions"""
     params = RobotParams()
     
-    # Robot dimensions
-    wheel_base = params.wheel_base  # Front to back (m)
-    guide_wheel_width = params.guide_wheel_width  # Side to side (guide wheels) (m)
+    # Robot dimensions from CAD
+    drive_wheel_diameter = params.drive_wheel_diameter  # 100mm
+    drive_wheel_width = params.drive_wheel_width  # 38.1mm
+    wheel_spacing_in_set = params.wheel_spacing_in_set  # 105mm
+    wheel_set_separation = params.wheel_set_separation  # 749mm
+    wheel_base = params.wheel_base  # 1200mm - distance between outside faces
+    
+    guide_wheel_diameter = params.guide_wheel_diameter  # 80mm
+    guide_wheel_width = params.guide_wheel_width  # 16mm
     
     # Example spacing for diagram (use 10mm as example)
-    example_spacing = 0.01  # 10mm
-    rail_width = guide_wheel_width + 2 * example_spacing
+    example_spacing = 0.01  # 10mm gap between guide wheel and flange
+    # Robot sits on top of two mirror-image rails
+    # Distance between flanges = guide_wheel_width + 2*spacing
+    flange_separation = guide_wheel_width + 2 * example_spacing
     
     fig = go.Figure()
     
     # Draw using scatter plots for better control
-    # Left rail (rectangle as scatter points)
-    rail_thickness = 0.02
-    left_rail_x = [-rail_width/2 - rail_thickness, -rail_width/2, -rail_width/2, -rail_width/2 - rail_thickness, -rail_width/2 - rail_thickness]
-    left_rail_y = [-0.15, -0.15, 0.15, 0.15, -0.15]
+    # Robot travels left/right (x-direction in diagram)
+    # Robot body (rectangle) - approximate size
+    robot_length = wheel_base  # Direction of travel (left/right)
+    robot_width = 0.5  # Approximate robot width (will show wheels outside)
+    robot_x = [-robot_length/2, robot_length/2, robot_length/2, -robot_length/2, -robot_length/2]
+    robot_y = [-robot_width/2, -robot_width/2, robot_width/2, robot_width/2, -robot_width/2]
+    fig.add_trace(go.Scatter(
+        x=robot_x, y=robot_y,
+        fill="toself", fillcolor="lightblue", line=dict(color="blue", width=2),
+        mode="lines", name="Robot Body", showlegend=False, hoverinfo="skip"
+    ))
+    
+    # Draw drive wheels (8 total: 4 sets of 2)
+    # Each set has 2 wheels 105mm apart
+    # Sets are 749mm apart
+    # Calculate positions: front set at -wheel_base/2, rear set at +wheel_base/2
+    drive_wheel_radius = drive_wheel_diameter / 2
+    angles = np.linspace(0, 2*np.pi, 20)
+    
+    # Front set positions (approximate - wheels are on both sides)
+    front_set_center = -wheel_base/2
+    rear_set_center = wheel_base/2
+    
+    # Draw drive wheels as circles (simplified - showing 4 wheels total, 2 per side)
+    # Left side front
+    wheel_x = front_set_center + drive_wheel_radius * np.cos(angles)
+    wheel_y = -0.2 + drive_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="darkgray", line=dict(color="black", width=1),
+        mode="lines", name="Drive Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    # Left side rear
+    wheel_x = rear_set_center + drive_wheel_radius * np.cos(angles)
+    wheel_y = -0.2 + drive_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="darkgray", line=dict(color="black", width=1),
+        mode="lines", name="Drive Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    # Right side front
+    wheel_x = front_set_center + drive_wheel_radius * np.cos(angles)
+    wheel_y = 0.2 + drive_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="darkgray", line=dict(color="black", width=1),
+        mode="lines", name="Drive Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    # Right side rear
+    wheel_x = rear_set_center + drive_wheel_radius * np.cos(angles)
+    wheel_y = 0.2 + drive_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="darkgray", line=dict(color="black", width=1),
+        mode="lines", name="Drive Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    
+    # Guide wheels on the outside (left and right sides)
+    # 4 sets of 2 wheels each (8 total guide wheels)
+    # Guide wheels are horizontal and contact the flanges
+    guide_wheel_radius = guide_wheel_diameter / 2
+    
+    # Left side guide wheels (front and back)
+    # Front left guide wheel
+    wheel_x = front_set_center + guide_wheel_radius * np.cos(angles)
+    wheel_y = -flange_separation/2 - guide_wheel_width/2 + guide_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
+        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    # Rear left guide wheel
+    wheel_x = rear_set_center + guide_wheel_radius * np.cos(angles)
+    wheel_y = -flange_separation/2 - guide_wheel_width/2 + guide_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
+        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    
+    # Right side guide wheels (front and back)
+    # Front right guide wheel
+    wheel_x = front_set_center + guide_wheel_radius * np.cos(angles)
+    wheel_y = flange_separation/2 + guide_wheel_width/2 + guide_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
+        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    # Rear right guide wheel
+    wheel_x = rear_set_center + guide_wheel_radius * np.cos(angles)
+    wheel_y = flange_separation/2 + guide_wheel_width/2 + guide_wheel_radius * np.sin(angles)
+    fig.add_trace(go.Scatter(
+        x=wheel_x, y=wheel_y,
+        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
+        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
+    ))
+    
+    # Two mirror-image rails (shown as rectangles below robot)
+    # Left rail
+    rail_length = robot_length * 1.2  # Rails extend slightly beyond robot
+    rail_width_rail = 0.03  # Width of the rail itself
+    left_rail_x = [-rail_length/2, rail_length/2, rail_length/2, -rail_length/2, -rail_length/2]
+    left_rail_y = [-flange_separation/2 - rail_width_rail, -flange_separation/2 - rail_width_rail, 
+                   -flange_separation/2, -flange_separation/2, -flange_separation/2 - rail_width_rail]
     fig.add_trace(go.Scatter(
         x=left_rail_x, y=left_rail_y,
         fill="toself", fillcolor="gray", line=dict(color="black", width=2),
@@ -335,141 +489,164 @@ def create_robot_diagram() -> go.Figure:
     ))
     
     # Right rail
-    right_rail_x = [rail_width/2, rail_width/2 + rail_thickness, rail_width/2 + rail_thickness, rail_width/2, rail_width/2]
-    right_rail_y = [-0.15, -0.15, 0.15, 0.15, -0.15]
+    right_rail_x = [-rail_length/2, rail_length/2, rail_length/2, -rail_length/2, -rail_length/2]
+    right_rail_y = [flange_separation/2, flange_separation/2, 
+                    flange_separation/2 + rail_width_rail, flange_separation/2 + rail_width_rail, flange_separation/2]
     fig.add_trace(go.Scatter(
         x=right_rail_x, y=right_rail_y,
         fill="toself", fillcolor="gray", line=dict(color="black", width=2),
         mode="lines", name="Right Rail", showlegend=False, hoverinfo="skip"
     ))
     
-    # Left flange (thicker, darker)
-    flange_thickness = 0.005
-    left_flange_x = [-rail_width/2 - flange_thickness, -rail_width/2, -rail_width/2, -rail_width/2 - flange_thickness, -rail_width/2 - flange_thickness]
-    left_flange_y = [-0.2, -0.2, 0.2, 0.2, -0.2]
+    # Vertical flanges (shown as thicker lines)
+    # Left flange (vertical, contacts left guide wheels)
+    flange_thickness = 0.003
+    left_flange_x = [-rail_length/2, rail_length/2, rail_length/2, -rail_length/2, -rail_length/2]
+    left_flange_y = [-flange_separation/2 - flange_thickness, -flange_separation/2 - flange_thickness,
+                     -flange_separation/2, -flange_separation/2, -flange_separation/2 - flange_thickness]
     fig.add_trace(go.Scatter(
         x=left_flange_x, y=left_flange_y,
-        fill="toself", fillcolor="darkgray", line=dict(color="black", width=2),
+        fill="toself", fillcolor="darkgray", line=dict(color="black", width=3),
         mode="lines", name="Left Flange", showlegend=False, hoverinfo="skip"
     ))
     
-    # Right flange
-    right_flange_x = [rail_width/2, rail_width/2 + flange_thickness, rail_width/2 + flange_thickness, rail_width/2, rail_width/2]
-    right_flange_y = [-0.2, -0.2, 0.2, 0.2, -0.2]
+    # Right flange (vertical, contacts right guide wheels)
+    right_flange_x = [-rail_length/2, rail_length/2, rail_length/2, -rail_length/2, -rail_length/2]
+    right_flange_y = [flange_separation/2, flange_separation/2,
+                      flange_separation/2 + flange_thickness, flange_separation/2 + flange_thickness, flange_separation/2]
     fig.add_trace(go.Scatter(
         x=right_flange_x, y=right_flange_y,
-        fill="toself", fillcolor="darkgray", line=dict(color="black", width=2),
+        fill="toself", fillcolor="darkgray", line=dict(color="black", width=3),
         mode="lines", name="Right Flange", showlegend=False, hoverinfo="skip"
     ))
     
-    # Robot body (rectangle)
-    robot_length = wheel_base
-    robot_width = guide_wheel_width
-    robot_x = [-robot_width/2, robot_width/2, robot_width/2, -robot_width/2, -robot_width/2]
-    robot_y = [-robot_length/2, -robot_length/2, robot_length/2, robot_length/2, -robot_length/2]
-    fig.add_trace(go.Scatter(
-        x=robot_x, y=robot_y,
-        fill="toself", fillcolor="lightblue", line=dict(color="blue", width=2),
-        mode="lines", name="Robot Body", showlegend=False, hoverinfo="skip"
-    ))
-    
-    # Guide wheels (circles approximated as polygons)
-    wheel_radius = 0.015
-    angles = np.linspace(0, 2*np.pi, 20)
-    # Front left guide wheel
-    wheel_x = -guide_wheel_width/2 + wheel_radius * np.cos(angles)
-    wheel_y = robot_length/2 + wheel_radius * np.sin(angles)
-    fig.add_trace(go.Scatter(
-        x=wheel_x, y=wheel_y,
-        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
-        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
-    ))
-    # Front right guide wheel
-    wheel_x = guide_wheel_width/2 + wheel_radius * np.cos(angles)
-    wheel_y = robot_length/2 + wheel_radius * np.sin(angles)
-    fig.add_trace(go.Scatter(
-        x=wheel_x, y=wheel_y,
-        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
-        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
-    ))
-    # Rear left guide wheel
-    wheel_x = -guide_wheel_width/2 + wheel_radius * np.cos(angles)
-    wheel_y = -robot_length/2 + wheel_radius * np.sin(angles)
-    fig.add_trace(go.Scatter(
-        x=wheel_x, y=wheel_y,
-        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
-        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
-    ))
-    # Rear right guide wheel
-    wheel_x = guide_wheel_width/2 + wheel_radius * np.cos(angles)
-    wheel_y = -robot_length/2 + wheel_radius * np.sin(angles)
-    fig.add_trace(go.Scatter(
-        x=wheel_x, y=wheel_y,
-        fill="toself", fillcolor="orange", line=dict(color="darkorange", width=2),
-        mode="lines", name="Guide Wheel", showlegend=False, hoverinfo="skip"
-    ))
-    
     # Add dimension annotations
-    # Gap dimension (left side)
+    # Gap dimension (between guide wheel and flange)
     fig.add_annotation(
-        x=-rail_width/2 + example_spacing/2,
-        y=0.25,
+        x=robot_length/2 + 0.1,
+        y=-flange_separation/2 + example_spacing/2,
         text=f"Gap: {example_spacing*1000:.0f}mm",
         showarrow=True,
         arrowhead=2,
         arrowsize=1.5,
         arrowwidth=2,
         arrowcolor="red",
-        ax=0,
-        ay=-40,
+        ax=30,
+        ay=0,
         font=dict(size=14, color="red", family="Arial Black"),
         bgcolor="white",
         bordercolor="red",
         borderwidth=2
     )
     
-    # Wheel base dimension (front to back)
+    # Wheel base dimension (1200mm - distance between outside faces of wheels)
     fig.add_annotation(
-        x=0.25,
-        y=0,
-        text=f"Wheel Base: {wheel_base*1000:.0f}mm<br>(Front to Back)",
+        x=0,
+        y=-robot_width/2 - 0.15,
+        text=f"Wheel Base: {wheel_base*1000:.0f}mm<br>(Distance between outside faces)",
         showarrow=True,
         arrowhead=2,
         arrowsize=1.5,
         arrowwidth=2,
         arrowcolor="blue",
-        ax=40,
-        ay=0,
+        ax=0,
+        ay=30,
         font=dict(size=14, color="blue", family="Arial Black"),
         bgcolor="white",
         bordercolor="blue",
         borderwidth=2
     )
     
-    # Guide wheel width dimension (side to side)
+    # Guide wheel width dimension (16mm)
     fig.add_annotation(
-        x=0,
-        y=-robot_length/2 - 0.15,
-        text=f"Guide Wheel Width: {guide_wheel_width*1000:.0f}mm<br>(Side to Side)",
+        x=robot_length/2 + 0.15,
+        y=flange_separation/2 + guide_wheel_width/2,
+        text=f"Guide Wheel Width: {guide_wheel_width*1000:.0f}mm",
         showarrow=True,
         arrowhead=2,
         arrowsize=1.5,
         arrowwidth=2,
         arrowcolor="green",
-        ax=0,
-        ay=30,
-        font=dict(size=14, color="green", family="Arial Black"),
+        ax=-40,
+        ay=0,
+        font=dict(size=12, color="green", family="Arial Black"),
         bgcolor="white",
         bordercolor="green",
         borderwidth=2
     )
     
-    # Rail width dimension
+    # Drive wheel diameter
+    fig.add_annotation(
+        x=front_set_center - 0.15,
+        y=-0.2,
+        text=f"Drive Wheel: Ø{drive_wheel_diameter*1000:.0f}mm<br>Width: {drive_wheel_width*1000:.1f}mm",
+        showarrow=False,
+        font=dict(size=11, color="black", family="Arial"),
+        bgcolor="white",
+        bordercolor="black",
+        borderwidth=1
+    )
+    
+    # Wheel spacing in set
+    fig.add_annotation(
+        x=front_set_center + wheel_spacing_in_set/2,
+        y=-0.35,
+        text=f"Wheel Spacing: {wheel_spacing_in_set*1000:.0f}mm<br>(in set)",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=1.5,
+        arrowcolor="brown",
+        ax=0,
+        ay=20,
+        font=dict(size=11, color="brown", family="Arial"),
+        bgcolor="white",
+        bordercolor="brown",
+        borderwidth=1
+    )
+    
+    # Wheel set separation
     fig.add_annotation(
         x=0,
-        y=0.3,
-        text=f"Rail Width: {rail_width*1000:.0f}mm<br>(Guide Wheel + 2×Gap)",
+        y=-0.4,
+        text=f"Set Separation: {wheel_set_separation*1000:.0f}mm",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=1.5,
+        arrowcolor="navy",
+        ax=0,
+        ay=25,
+        font=dict(size=11, color="navy", family="Arial"),
+        bgcolor="white",
+        bordercolor="navy",
+        borderwidth=1
+    )
+    
+    # Guide wheel diameter
+    fig.add_annotation(
+        x=-robot_length/2 - 0.2,
+        y=flange_separation/2 + guide_wheel_width/2,
+        text=f"Guide Wheel: Ø{guide_wheel_diameter*1000:.0f}mm",
         showarrow=False,
+        font=dict(size=11, color="darkorange", family="Arial"),
+        bgcolor="white",
+        bordercolor="darkorange",
+        borderwidth=1
+    )
+    
+    # Flange separation dimension
+    fig.add_annotation(
+        x=-robot_length/2 - 0.15,
+        y=0,
+        text=f"Flange Separation: {flange_separation*1000:.0f}mm<br>(Guide Wheel + 2×Gap)",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1.5,
+        arrowwidth=2,
+        arrowcolor="purple",
+        ax=40,
+        ay=0,
         font=dict(size=12, color="purple", family="Arial"),
         bgcolor="white",
         bordercolor="purple",
@@ -477,25 +654,23 @@ def create_robot_diagram() -> go.Figure:
     )
     
     fig.update_layout(
-        title="Top-Down View: Robot and Rails (Dimensions)",
+        title="Top-Down View: Robot and Rails (Dimensions)<br>Robot travels left/right",
         xaxis=dict(
-            title="Lateral Position (m)",
-            range=[-0.4, 0.4],
-            scaleanchor="y",
-            scaleratio=1,
+            title="Direction of Travel (m)",
+            range=[-1.0, 1.0],
             showgrid=True,
             gridwidth=1,
             gridcolor="lightgray"
         ),
         yaxis=dict(
-            title="Forward Direction (m)",
-            range=[-0.4, 0.4],
+            title="Lateral Position (m)",
+            range=[-0.2, 0.2],
             showgrid=True,
             gridwidth=1,
             gridcolor="lightgray"
         ),
-        height=700,
-        width=700,
+        height=500,
+        width=1000,
         template="plotly_white",
         showlegend=False,
         plot_bgcolor="white"
@@ -547,10 +722,10 @@ def create_results_layout(
     for i, spacing_mm in enumerate(spacings):
         t = results[spacing_mm]["time"]
         y = results[spacing_mm]["state"][:, 1] * 1000  # Convert to mm
-        # Clamp y values to reasonable range (should be within ±rail_width/2)
-        # Get rail width from simulator
+        # Clamp y values to reasonable range (should be within ±flange_separation/2)
+        # Get flange separation from simulator
         simulator = results[spacing_mm]["simulator"]
-        max_y = (simulator.rail_width / 2 + simulator.params.guide_wheel_width / 2) * 1000  # mm
+        max_y = (simulator.flange_separation / 2 + simulator.params.guide_wheel_width / 2) * 1000  # mm
         min_y = -max_y
         y = np.clip(y, min_y, max_y)  # Clamp to reasonable bounds
         analysis = results[spacing_mm]["analysis"]

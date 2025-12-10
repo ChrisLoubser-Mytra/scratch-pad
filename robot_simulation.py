@@ -18,11 +18,20 @@ class RobotParams:
 
     robot_mass: float = 227.0  # kg (500 lbs)
     max_pallet_mass: float = 1361.0  # kg (3000 lbs)
-    wheel_diameter: float = 0.3  # m (300mm)
-    guide_wheel_width: float = 0.07  # m (70mm)
+    # Drive wheels (8 total: 4 sets of 2 wheels each)
+    drive_wheel_diameter: float = 0.1  # m (100mm)
+    drive_wheel_width: float = 0.0381  # m (38.1mm)
+    wheel_spacing_in_set: float = 0.105  # m (105mm, distance between wheels in a set)
+    wheel_set_separation: float = 0.749  # m (749mm, distance between first wheels of sets on same side)
+    # Guide wheels (horizontal, contact flanges)
+    guide_wheel_diameter: float = 0.08  # m (80mm)
+    guide_wheel_width: float = 0.016  # m (16mm, width of guide wheel contacting flange)
+    # Legacy parameters (kept for compatibility, calculated from above)
+    wheel_diameter: float = 0.1  # m (100mm, same as drive_wheel_diameter)
+    guide_wheel_width: float = 0.016  # m (16mm, same as guide_wheel_width)
     max_speed: float = 1.5  # m/s
     acceleration: float = 0.75  # m/s²
-    wheel_base: float = 0.96  # m (48 inches, approximate wheel spacing)
+    wheel_base: float = 1.2  # m (1200mm, distance between outside faces of wheels)
     moment_of_inertia: float = 0.0  # Will be calculated
     rail_flange_height: float = 0.02  # m (20mm vertical flange height)
 
@@ -61,9 +70,17 @@ class RobotSimulator:
             initial_theta: Initial angular misalignment (rad)
         """
         self.params = params
-        self.spacing = spacing  # Gap in meters
+        self.spacing = spacing  # Gap in meters between guide wheel and flange
         self.initial_theta = initial_theta
-        self.rail_width = 0.07 + 2 * spacing  # Total rail width including gaps
+        
+        # Robot sits on top of two mirror-image rails
+        # Each rail has a vertical flange that the guide wheels contact
+        # The guide wheels are on the outside of the robot
+        # Distance between the two flanges = guide_wheel_width + 2*spacing
+        # Where guide_wheel_width is the width of the guide wheel (16mm)
+        robot_width = params.guide_wheel_width  # Width of guide wheel (16mm)
+        self.flange_separation = robot_width + 2 * spacing  # Distance between the two flanges
+        # Left flange at y = -flange_separation/2, right flange at y = +flange_separation/2
 
         # Contact force parameters
         # These may need adjustment for larger spacings:
@@ -91,19 +108,23 @@ class RobotSimulator:
         Returns:
             Tuple of (force_left, force_right, penetration_left, penetration_right) in Newtons and meters
         """
-        # Rail center is at y=0
-        # Left flange at y = -rail_width/2, right flange at y = +rail_width/2
-        # Guide wheels are positioned at the edges of the guide wheel width
-        # The guide wheel outer edges are at y ± guide_wheel_width/2
-
+        # Robot center is at y=0
+        # Guide wheels are on the outside of the robot
+        # Left guide wheel outer edge at y = -guide_wheel_width/2
+        # Right guide wheel outer edge at y = +guide_wheel_width/2
+        # Two mirror-image rails with vertical flanges
+        # Left flange at y = -flange_separation/2
+        # Right flange at y = +flange_separation/2
+        
         guide_wheel_half_width = self.params.guide_wheel_width / 2
-        # Account for angular misalignment - wheels can contact at different positions
-        # For large spacings, need to consider the robot's orientation
+        
+        # Account for robot's lateral position and angular misalignment
+        # For small angles, the guide wheel positions are approximately:
         left_wheel_edge = y - guide_wheel_half_width
         right_wheel_edge = y + guide_wheel_half_width
 
-        left_flange_pos = -self.rail_width / 2
-        right_flange_pos = self.rail_width / 2
+        left_flange_pos = -self.flange_separation / 2
+        right_flange_pos = self.flange_separation / 2
         
         # For very large spacings, the robot may need significant offset to contact
         # The rail width = guide_wheel_width + 2*spacing
@@ -192,8 +213,10 @@ class RobotSimulator:
         f_y = force_right - force_left
 
         # Angular dynamics
-        # Torque from lateral forces (lever arm is half the guide wheel width)
-        torque = (force_right - force_left) * self.params.guide_wheel_width / 2
+        # Torque from lateral forces
+        # The guide wheels are on the outside, so the lever arm is half the wheel base (front to back)
+        # For a robot with wheel base L, torque = F * L/2
+        torque = (force_right - force_left) * self.params.wheel_base / 2
 
         # Angular damping - prevents unbounded spinning
         # Damping proportional to angular velocity (linear) plus quadratic term for high velocities
@@ -416,7 +439,7 @@ class RobotSimulator:
         }
 
 
-def skew_mm_to_theta(skew_mm: float, wheel_base_m: float = 0.96) -> float:
+def skew_mm_to_theta(skew_mm: float, wheel_base_m: float = 1.2) -> float:
     """
     Convert front-to-back skew in mm to angular misalignment in radians
     
