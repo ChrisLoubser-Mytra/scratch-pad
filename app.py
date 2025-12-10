@@ -33,9 +33,10 @@ app.layout = html.Div([
         html.Div(id='parameters-table-container', style={'marginBottom': '30px'}),
         
         html.Div([
-            html.H3("Robot and Rails Diagram", style={"marginBottom": "15px"}),
+            html.H3("Robot and Rails Diagrams", style={"marginBottom": "15px"}),
             html.Div([
                 html.Div([dcc.Graph(id="robot-diagram-top")], style={"marginBottom": "20px"}),  # Top-down view
+                html.Div([dcc.Graph(id="robot-diagram-front")], style={"marginBottom": "20px"}),  # Front view
                 html.Div([dcc.Graph(id="robot-diagram-side")], style={"marginBottom": "20px"}),  # Side view
             ], style={"marginBottom": "30px"}),
         ], style={"marginBottom": "30px"}),
@@ -82,7 +83,39 @@ app.layout = html.Div([
                     html.Small("Lateral offset between front and back of robot", 
                               style={'color': '#666', 'fontSize': '11px', 'display': 'block', 'marginTop': '2px'})
                 ]),
-            ], style={'width': '20%', 'display': 'inline-block', 'marginRight': '20px'}),
+            ], style={'width': '15%', 'display': 'inline-block', 'marginRight': '20px'}),
+            
+            html.Div([
+                html.Label("Rail Angle (deg):", 
+                          style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                dcc.Input(
+                    id='rail-angle-input',
+                    type='number',
+                    value=0.0,
+                    min=-5.0,
+                    max=5.0,
+                    step=0.1,
+                    style={'width': '100%', 'padding': '8px'}
+                ),
+                html.Small("Constant angle of rails (0 = straight)", 
+                          style={'color': '#666', 'fontSize': '11px', 'display': 'block', 'marginTop': '2px'})
+            ], style={'width': '15%', 'display': 'inline-block', 'marginRight': '20px'}),
+            
+            html.Div([
+                html.Label("Rail Curvature (deg/m):", 
+                          style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                dcc.Input(
+                    id='rail-curvature-input',
+                    type='number',
+                    value=0.0,
+                    min=-1.0,
+                    max=1.0,
+                    step=0.01,
+                    style={'width': '100%', 'padding': '8px'}
+                ),
+                html.Small("Angle change per meter (curvature)", 
+                          style={'color': '#666', 'fontSize': '11px', 'display': 'block', 'marginTop': '2px'})
+            ], style={'width': '15%', 'display': 'inline-block', 'marginRight': '20px'}),
             
             html.Button('Run Simulation', id='run-button', 
                        style={'width': '20%', 'padding': '10px', 'fontSize': '16px',
@@ -107,11 +140,12 @@ app.layout = html.Div([
 @app.callback(
     [Output("parameters-table-container", "children"),
      Output("robot-diagram-top", "figure"),
+     Output("robot-diagram-front", "figure"),
      Output("robot-diagram-side", "figure")],
     [Input("run-button", "n_clicks")],
     prevent_initial_call=False,
 )
-def update_parameters_table(n_clicks: int | None) -> tuple[list[Any], go.Figure, go.Figure]:
+def update_parameters_table(n_clicks: int | None) -> tuple[list[Any], go.Figure, go.Figure, go.Figure]:
     """Create parameters table with realistic material property comparisons"""
     # Get actual parameter values from the simulation
     params = RobotParams()
@@ -316,18 +350,20 @@ def update_parameters_table(n_clicks: int | None) -> tuple[list[Any], go.Figure,
     ], style={"marginBottom": "30px", "padding": "20px", "backgroundColor": "#f9f9f9", "borderRadius": "10px"})
     
     # Create diagrams
-    fig_top, fig_side = create_robot_diagram()
+    fig_top, fig_front, fig_side = create_robot_diagram()
     
-    return [table_div], fig_top, fig_side
+    return [table_div], fig_top, fig_front, fig_side
 
 
 @app.callback(
     [Output("results-container", "children"), Output("status-message", "children")],
     [Input("run-button", "n_clicks")],
-    [State("spacing-input", "value"), State("duration-input", "value"), State("skew-input", "value")],
+    [State("spacing-input", "value"), State("duration-input", "value"), State("skew-input", "value"),
+     State("rail-angle-input", "value"), State("rail-curvature-input", "value")],
 )
 def update_results(
-    n_clicks: int | None, spacing_str: str, duration: float, initial_skew_mm: float
+    n_clicks: int | None, spacing_str: str, duration: float, initial_skew_mm: float,
+    rail_angle_deg: float, rail_curvature_deg_per_m: float
 ) -> tuple[Any, Any]:
     """Run simulation and update results"""
     if n_clicks is None:
@@ -350,9 +386,21 @@ def update_results(
                 style={"color": "red"},
             )
 
+        # Convert rail angle from degrees to radians
+        import math
+        rail_angle = math.radians(rail_angle_deg) if rail_angle_deg is not None else 0.0
+        rail_curvature = math.radians(rail_curvature_deg_per_m) if rail_curvature_deg_per_m is not None else 0.0
+        
         # Run simulation (converts skew_mm to theta internally)
         # Travel exactly 10 meters
-        results = run_spacing_analysis(spacings, duration=duration, initial_skew_mm=initial_skew_mm, max_distance=10.0)
+        results = run_spacing_analysis(
+            spacings,
+            duration=duration,
+            initial_skew_mm=initial_skew_mm,
+            max_distance=10.0,
+            rail_angle=rail_angle,
+            rail_angle_per_meter=rail_curvature
+        )
 
         # Create visualizations
         status_msg = html.Div(
@@ -367,11 +415,11 @@ def update_results(
         return [], html.Div(error_msg, style={"color": "red"})
 
 
-def create_robot_diagram() -> tuple[go.Figure, go.Figure]:
-    """Create top-down and side-view diagrams of the robot and rails with dimensions
+def create_robot_diagram() -> tuple[go.Figure, go.Figure, go.Figure]:
+    """Create top-down, front-view, and side-view diagrams of the robot and rails with dimensions
     
     Returns:
-        Tuple of (top_down_fig, side_view_fig)
+        Tuple of (top_down_fig, front_view_fig, side_view_fig)
     """
     params = RobotParams()
     
@@ -399,9 +447,21 @@ def create_robot_diagram() -> tuple[go.Figure, go.Figure]:
     example_spacing = 0.01  # 10mm gap between guide wheel and flange
     
     # Calculate positions
-    front_set_center = -wheel_base/2
-    rear_set_center = wheel_base/2
-    guide_wheel_center_x = (front_set_center + rear_set_center) / 2  # Center between sets
+    # Drive wheels: 4 wheels in a single line on each side
+    # Front wheel at -wheel_base/2, rear wheel at +wheel_base/2
+    # Two sets: first set (2 wheels), gap, second set (2 wheels)
+    # Guide wheels positioned between the two sets
+    
+    # First set: front two wheels
+    wheel1_x_center = -wheel_base/2  # Front wheel center
+    wheel2_x_center = wheel1_x_center + wheel_spacing_in_set  # Second wheel center
+    
+    # Gap between sets
+    wheel3_x_center = wheel2_x_center + wheel_set_separation  # Third wheel center (start of second set)
+    wheel4_x_center = wheel3_x_center + wheel_spacing_in_set  # Fourth wheel center
+    
+    # Guide wheels positioned between the two sets (between wheel2 and wheel3)
+    guide_wheel_center_x = (wheel2_x_center + wheel3_x_center) / 2  # Center between sets
     
     # Guide wheel positions (fixed, not centered)
     # Guide wheels are 1119.2mm apart (between left and right sides)
@@ -414,44 +474,56 @@ def create_robot_diagram() -> tuple[go.Figure, go.Figure]:
     guide_wheel_right_front_x = guide_wheel_center_x - guide_wheel_separation/2
     guide_wheel_right_rear_x = guide_wheel_center_x + guide_wheel_separation/2
     
+    # Robot body: almost as wide as rails (1219.2mm apart)
+    # Drive wheels are positioned on the rails (touching the horizontal surfaces)
+    # Body is almost as wide as flange separation, so body width ≈ 1200mm
+    robot_body_width = flange_separation * 0.98  # 98% of flange separation
+    # Drive wheels are on the rails, so they're at the rail edges (horizontal surfaces)
+    # Left rail horizontal surface extends from -flange_separation/2 inward
+    # Right rail horizontal surface extends from +flange_separation/2 inward
+    # Drive wheels are positioned on these horizontal surfaces
+    drive_wheel_lateral_offset_left = -flange_separation/2 + rail_horizontal_width/2  # Center of left rail horizontal surface
+    drive_wheel_lateral_offset_right = flange_separation/2 - rail_horizontal_width/2  # Center of right rail horizontal surface
+    
     # ========== TOP-DOWN VIEW ==========
     fig_top = go.Figure()
     
-    # Robot body (rectangular prism top view)
-    robot_body_length = wheel_base * 0.8
-    robot_body_width = 0.3
+    # Robot body (rectangular prism top view) - almost as wide as rails
+    robot_body_length = wheel_base * 1.1  # Slightly longer than wheel base
     body_x = [-robot_body_length/2, robot_body_length/2, robot_body_length/2, -robot_body_length/2, -robot_body_length/2]
     body_y = [-robot_body_width/2, -robot_body_width/2, robot_body_width/2, robot_body_width/2, -robot_body_width/2]
     fig_top.add_trace(go.Scatter(x=body_x, y=body_y, fill="toself", fillcolor="lightblue",
                                 line=dict(color="blue", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
     # Drive wheels as rectangles (top-down view)
-    # Left side front set (2 wheels)
-    wheel1_x = [front_set_center - drive_wheel_width/2, front_set_center + drive_wheel_width/2,
-                front_set_center + drive_wheel_width/2, front_set_center - drive_wheel_width/2, front_set_center - drive_wheel_width/2]
-    wheel1_y = [-0.15 - drive_wheel_diameter/2, -0.15 - drive_wheel_diameter/2,
-                -0.15 + drive_wheel_diameter/2, -0.15 + drive_wheel_diameter/2, -0.15 - drive_wheel_diameter/2]
-    fig_top.add_trace(go.Scatter(x=wheel1_x, y=wheel1_y, fill="toself", fillcolor="darkgray",
-                                line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
-    wheel2_x = [front_set_center + wheel_spacing_in_set - drive_wheel_width/2, front_set_center + wheel_spacing_in_set + drive_wheel_width/2,
-                front_set_center + wheel_spacing_in_set + drive_wheel_width/2, front_set_center + wheel_spacing_in_set - drive_wheel_width/2,
-                front_set_center + wheel_spacing_in_set - drive_wheel_width/2]
-    wheel2_y = wheel1_y
-    fig_top.add_trace(go.Scatter(x=wheel2_x, y=wheel2_y, fill="toself", fillcolor="darkgray",
-                                line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
-    # Left side rear set
-    wheel3_x = [x + wheel_set_separation for x in wheel1_x]
-    wheel3_y = wheel1_y
-    fig_top.add_trace(go.Scatter(x=wheel3_x, y=wheel3_y, fill="toself", fillcolor="darkgray",
-                                line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
-    wheel4_x = [x + wheel_set_separation for x in wheel2_x]
-    wheel4_y = wheel1_y
-    fig_top.add_trace(go.Scatter(x=wheel4_x, y=wheel4_y, fill="toself", fillcolor="darkgray",
-                                line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
-    # Right side wheels (mirror)
-    for wheel_x_list, wheel_y_list in [(wheel1_x, wheel1_y), (wheel2_x, wheel2_y), (wheel3_x, wheel3_y), (wheel4_x, wheel4_y)]:
-        wheel_y_mirror = [-y for y in wheel_y_list]
-        fig_top.add_trace(go.Scatter(x=wheel_x_list, y=wheel_y_mirror, fill="toself", fillcolor="darkgray",
+    # 4 wheels in a single line on each side, oriented in direction of travel (90° rotated)
+    # Wheels are on the rails (touching the horizontal surfaces)
+    # Left side: 4 wheels in a line
+    drive_wheel_y_center_left = drive_wheel_lateral_offset_left  # On left rail horizontal surface
+    drive_wheel_y_center_right = drive_wheel_lateral_offset_right  # On right rail horizontal surface
+    
+    # Left side wheels (4 wheels in a line, oriented in direction of travel)
+    # Rectangles rotated 90°: diameter (100mm) is now in direction of travel, width (38.1mm) is lateral
+    for wheel_x_center in [wheel1_x_center, wheel2_x_center, wheel3_x_center, wheel4_x_center]:
+        # Rectangle oriented in direction of travel: diameter along x-axis, width along y-axis
+        wheel_x = [wheel_x_center - drive_wheel_diameter/2, wheel_x_center + drive_wheel_diameter/2,
+                   wheel_x_center + drive_wheel_diameter/2, wheel_x_center - drive_wheel_diameter/2,
+                   wheel_x_center - drive_wheel_diameter/2]
+        wheel_y = [drive_wheel_y_center_left - drive_wheel_width/2, drive_wheel_y_center_left - drive_wheel_width/2,
+                   drive_wheel_y_center_left + drive_wheel_width/2, drive_wheel_y_center_left + drive_wheel_width/2,
+                   drive_wheel_y_center_left - drive_wheel_width/2]
+        fig_top.add_trace(go.Scatter(x=wheel_x, y=wheel_y, fill="toself", fillcolor="darkgray",
+                                    line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Right side wheels (4 wheels in a line, oriented in direction of travel)
+    for wheel_x_center in [wheel1_x_center, wheel2_x_center, wheel3_x_center, wheel4_x_center]:
+        wheel_x = [wheel_x_center - drive_wheel_diameter/2, wheel_x_center + drive_wheel_diameter/2,
+                   wheel_x_center + drive_wheel_diameter/2, wheel_x_center - drive_wheel_diameter/2,
+                   wheel_x_center - drive_wheel_diameter/2]
+        wheel_y = [drive_wheel_y_center_right - drive_wheel_width/2, drive_wheel_y_center_right - drive_wheel_width/2,
+                   drive_wheel_y_center_right + drive_wheel_width/2, drive_wheel_y_center_right + drive_wheel_width/2,
+                   drive_wheel_y_center_right - drive_wheel_width/2]
+        fig_top.add_trace(go.Scatter(x=wheel_x, y=wheel_y, fill="toself", fillcolor="darkgray",
                                     line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
     
     # Guide wheels as circles (top-down view)
@@ -514,10 +586,33 @@ def create_robot_diagram() -> tuple[go.Figure, go.Figure]:
                           arrowwidth=2, arrowcolor="red", ax=30, ay=0, font=dict(size=12, color="red"),
                           bgcolor="white", bordercolor="red", borderwidth=2)
     
-    # Wheel base
-    fig_top.add_annotation(x=0, y=-0.7, text=f"Wheel Base: {wheel_base*1000:.0f}mm", showarrow=True,
+    # Wheel base (distance between front and rear wheels)
+    fig_top.add_annotation(x=0, y=-0.7, text=f"Wheel Base: {wheel_base*1000:.0f}mm<br>(front to rear)", showarrow=True,
                           arrowhead=2, arrowsize=1.5, arrowwidth=2, arrowcolor="blue", ax=0, ay=25,
                           font=dict(size=12, color="blue"), bgcolor="white", bordercolor="blue", borderwidth=2)
+    
+    # Drive wheel spacing
+    fig_top.add_annotation(x=wheel1_x_center + wheel_spacing_in_set/2, y=drive_wheel_y_center_left - 0.05,
+                          text=f"Wheel Spacing: {wheel_spacing_in_set*1000:.0f}mm<br>(in set)", showarrow=True,
+                          arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="brown", ax=0, ay=20,
+                          font=dict(size=11, color="brown"), bgcolor="white", bordercolor="brown", borderwidth=1)
+    
+    # Set separation
+    fig_top.add_annotation(x=(wheel2_x_center + wheel3_x_center)/2, y=drive_wheel_y_center_left - 0.08,
+                          text=f"Set Separation: {wheel_set_separation*1000:.0f}mm", showarrow=True,
+                          arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="navy", ax=0, ay=20,
+                          font=dict(size=11, color="navy"), bgcolor="white", bordercolor="navy", borderwidth=1)
+    
+    # Drive wheel on rail annotation
+    fig_top.add_annotation(x=wheel1_x_center, y=drive_wheel_y_center_left,
+                          text=f"Drive Wheel: {drive_wheel_diameter*1000:.0f}mm × {drive_wheel_width*1000:.1f}mm<br>(on rail, oriented in travel direction)", showarrow=False,
+                          font=dict(size=11, color="black"), bgcolor="white", bordercolor="black", borderwidth=1)
+    
+    # Robot body width
+    fig_top.add_annotation(x=robot_body_length/2 + 0.1, y=0,
+                          text=f"Body Width: {robot_body_width*1000:.1f}mm<br>(almost as wide as rails)", showarrow=True,
+                          arrowhead=2, arrowsize=1.5, arrowwidth=2, arrowcolor="green", ax=30, ay=0,
+                          font=dict(size=12, color="green"), bgcolor="white", bordercolor="green", borderwidth=2)
     
     # Guide wheel separation (front to back on same side)
     fig_top.add_annotation(x=guide_wheel_center_x, y=guide_wheel_left_y - 0.1,
@@ -550,110 +645,213 @@ def create_robot_diagram() -> tuple[go.Figure, go.Figure]:
         height=600, width=1000, template="plotly_white", showlegend=False, plot_bgcolor="white"
     )
     
-    # ========== SIDE VIEW ==========
-    fig_side = go.Figure()
+    # ========== FRONT VIEW (from travel direction) ==========
+    fig_front = go.Figure()
     
     # Ground
     ground_y = 0
     
-    # L-shaped rails (side view)
-    # Left rail: horizontal surface + vertical flange
+    # L-shaped rails (front view - flanges on outside)
+    # Left rail: horizontal surface + vertical flange on outside
     rail_horizontal_thickness = 0.01  # Visual thickness
     left_rail_horizontal_x = [-flange_separation/2 - rail_horizontal_width, -flange_separation/2,
                               -flange_separation/2, -flange_separation/2 - rail_horizontal_width,
                               -flange_separation/2 - rail_horizontal_width]
     left_rail_horizontal_y = [ground_y, ground_y, ground_y + rail_horizontal_thickness,
                               ground_y + rail_horizontal_thickness, ground_y]
-    fig_side.add_trace(go.Scatter(x=left_rail_horizontal_x, y=left_rail_horizontal_y, fill="toself", fillcolor="gray",
+    fig_front.add_trace(go.Scatter(x=left_rail_horizontal_x, y=left_rail_horizontal_y, fill="toself", fillcolor="gray",
                                   line=dict(color="black", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Left rail vertical flange
-    left_flange_x = [-flange_separation/2 - 0.005, -flange_separation/2, -flange_separation/2,
-                     -flange_separation/2 - 0.005, -flange_separation/2 - 0.005]
+    # Left rail vertical flange (on outside, away from center)
+    left_flange_x = [-flange_separation/2 - rail_horizontal_width - 0.005, -flange_separation/2 - rail_horizontal_width,
+                     -flange_separation/2 - rail_horizontal_width, -flange_separation/2 - rail_horizontal_width - 0.005,
+                     -flange_separation/2 - rail_horizontal_width - 0.005]
     left_flange_y = [ground_y, ground_y, ground_y + rail_flange_height,
                      ground_y + rail_flange_height, ground_y]
-    fig_side.add_trace(go.Scatter(x=left_flange_x, y=left_flange_y, fill="toself", fillcolor="darkgray",
+    fig_front.add_trace(go.Scatter(x=left_flange_x, y=left_flange_y, fill="toself", fillcolor="darkgray",
                                   line=dict(color="black", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Right rail: horizontal surface + vertical flange
+    # Right rail: horizontal surface + vertical flange on outside
     right_rail_horizontal_x = [flange_separation/2, flange_separation/2 + rail_horizontal_width,
                                flange_separation/2 + rail_horizontal_width, flange_separation/2, flange_separation/2]
     right_rail_horizontal_y = left_rail_horizontal_y
-    fig_side.add_trace(go.Scatter(x=right_rail_horizontal_x, y=right_rail_horizontal_y, fill="toself", fillcolor="gray",
+    fig_front.add_trace(go.Scatter(x=right_rail_horizontal_x, y=right_rail_horizontal_y, fill="toself", fillcolor="gray",
                                   line=dict(color="black", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Right rail vertical flange
-    right_flange_x = [flange_separation/2, flange_separation/2 + 0.005, flange_separation/2 + 0.005,
-                      flange_separation/2, flange_separation/2]
+    # Right rail vertical flange (on outside, away from center)
+    right_flange_x = [flange_separation/2 + rail_horizontal_width, flange_separation/2 + rail_horizontal_width + 0.005,
+                      flange_separation/2 + rail_horizontal_width + 0.005, flange_separation/2 + rail_horizontal_width,
+                      flange_separation/2 + rail_horizontal_width]
     right_flange_y = left_flange_y
-    fig_side.add_trace(go.Scatter(x=right_flange_x, y=right_flange_y, fill="toself", fillcolor="darkgray",
+    fig_front.add_trace(go.Scatter(x=right_flange_x, y=right_flange_y, fill="toself", fillcolor="darkgray",
                                   line=dict(color="black", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Drive wheels (circles in side view) - run on horizontal surfaces
+    # Drive wheels run on horizontal surfaces (front view - shown as rectangles)
     wheel_bottom = ground_y + rail_horizontal_thickness
     wheel_center_y = wheel_bottom + drive_wheel_diameter/2
-    wheel_center_x = 0
     wheel_angles = np.linspace(0, 2*np.pi, 30)
-    wheel_x_coords = wheel_center_x + (drive_wheel_diameter/2) * np.cos(wheel_angles)
-    wheel_y_coords = wheel_center_y + (drive_wheel_diameter/2) * np.sin(wheel_angles)
-    fig_side.add_trace(go.Scatter(x=wheel_x_coords, y=wheel_y_coords, fill="toself", fillcolor="darkgray",
-                                  line=dict(color="black", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Guide wheels (horizontal, contact flanges from inside)
+    # Drive wheels (front view - shown as rectangles, 4 wheels visible)
+    # In front view, all 4 wheels on each side appear at the same lateral position (they're in a line)
+    # Left side: 4 wheels at same lateral position (shown as one rectangle representing all 4)
+    drive_wheel_rect_width = drive_wheel_width  # 38.1mm width
+    drive_wheel_rect_height = drive_wheel_diameter  # 100mm diameter
+    
+    # Left side wheels (all 4 at same lateral position in front view)
+    wheel_y_pos_left = drive_wheel_y_center_left
+    wheel_rect_x_left = [wheel_y_pos_left - drive_wheel_rect_width/2, wheel_y_pos_left + drive_wheel_rect_width/2,
+                        wheel_y_pos_left + drive_wheel_rect_width/2, wheel_y_pos_left - drive_wheel_rect_width/2,
+                        wheel_y_pos_left - drive_wheel_rect_width/2]
+    wheel_rect_y = [wheel_center_y - drive_wheel_rect_height/2, wheel_center_y - drive_wheel_rect_height/2,
+                    wheel_center_y + drive_wheel_rect_height/2, wheel_center_y + drive_wheel_rect_height/2,
+                    wheel_center_y - drive_wheel_rect_height/2]
+    fig_front.add_trace(go.Scatter(x=wheel_rect_x_left, y=wheel_rect_y, fill="toself", fillcolor="darkgray",
+                                  line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Right side wheels (all 4 at same lateral position in front view)
+    wheel_y_pos_right = drive_wheel_y_center_right
+    wheel_rect_x_right = [wheel_y_pos_right - drive_wheel_rect_width/2, wheel_y_pos_right + drive_wheel_rect_width/2,
+                         wheel_y_pos_right + drive_wheel_rect_width/2, wheel_y_pos_right - drive_wheel_rect_width/2,
+                         wheel_y_pos_right - drive_wheel_rect_width/2]
+    fig_front.add_trace(go.Scatter(x=wheel_rect_x_right, y=wheel_rect_y, fill="toself", fillcolor="darkgray",
+                                  line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Guide wheels (front view - shown as rectangles, 2 wheels visible)
     guide_wheel_center_y = wheel_bottom + drive_wheel_diameter + robot_body_clearance + guide_wheel_diameter/2
-    # Left guide wheel contacts left flange from the right side (inside)
-    guide_wheel_left_x_coords = guide_wheel_left_y + (guide_wheel_diameter/2) * np.cos(wheel_angles)
-    guide_wheel_left_y_coords = guide_wheel_center_y + (guide_wheel_diameter/2) * np.sin(wheel_angles)
-    fig_side.add_trace(go.Scatter(x=guide_wheel_left_x_coords, y=guide_wheel_left_y_coords, fill="toself", fillcolor="orange",
-                                  line=dict(color="darkorange", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
-    # Right guide wheel contacts right flange from the left side (inside)
-    guide_wheel_right_x_coords = guide_wheel_right_y + (guide_wheel_diameter/2) * np.cos(wheel_angles)
-    guide_wheel_right_y_coords = guide_wheel_left_y_coords
-    fig_side.add_trace(go.Scatter(x=guide_wheel_right_x_coords, y=guide_wheel_right_y_coords, fill="toself", fillcolor="orange",
+    guide_wheel_rect_width = guide_wheel_width  # 16mm width
+    guide_wheel_rect_height = guide_wheel_diameter  # 80mm diameter
+    
+    # Left guide wheel (rectangle)
+    guide_wheel_left_rect_x = [guide_wheel_left_y - guide_wheel_rect_width/2, guide_wheel_left_y + guide_wheel_rect_width/2,
+                               guide_wheel_left_y + guide_wheel_rect_width/2, guide_wheel_left_y - guide_wheel_rect_width/2,
+                               guide_wheel_left_y - guide_wheel_rect_width/2]
+    guide_wheel_left_rect_y = [guide_wheel_center_y - guide_wheel_rect_height/2, guide_wheel_center_y - guide_wheel_rect_height/2,
+                               guide_wheel_center_y + guide_wheel_rect_height/2, guide_wheel_center_y + guide_wheel_rect_height/2,
+                               guide_wheel_center_y - guide_wheel_rect_height/2]
+    fig_front.add_trace(go.Scatter(x=guide_wheel_left_rect_x, y=guide_wheel_left_rect_y, fill="toself", fillcolor="orange",
                                   line=dict(color="darkorange", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Robot body (rectangular prism)
-    body_bottom = wheel_bottom + drive_wheel_diameter + robot_body_clearance
+    # Right guide wheel (rectangle)
+    guide_wheel_right_rect_x = [guide_wheel_right_y - guide_wheel_rect_width/2, guide_wheel_right_y + guide_wheel_rect_width/2,
+                                guide_wheel_right_y + guide_wheel_rect_width/2, guide_wheel_right_y - guide_wheel_rect_width/2,
+                                guide_wheel_right_y - guide_wheel_rect_width/2]
+    guide_wheel_right_rect_y = guide_wheel_left_rect_y
+    fig_front.add_trace(go.Scatter(x=guide_wheel_right_rect_x, y=guide_wheel_right_rect_y, fill="toself", fillcolor="orange",
+                                  line=dict(color="darkorange", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Robot body (rectangular prism) - on top of wheels
+    body_bottom = wheel_bottom + drive_wheel_diameter  # Directly on top of wheels (no clearance gap)
     body_top = body_bottom + robot_body_height
-    body_left = -0.15
-    body_right = 0.15
+    body_left = -robot_body_width/2
+    body_right = robot_body_width/2
     body_x_coords = [body_left, body_right, body_right, body_left, body_left]
     body_y_coords = [body_bottom, body_bottom, body_top, body_top, body_bottom]
-    fig_side.add_trace(go.Scatter(x=body_x_coords, y=body_y_coords, fill="toself", fillcolor="lightblue",
+    fig_front.add_trace(go.Scatter(x=body_x_coords, y=body_y_coords, fill="toself", fillcolor="lightblue",
                                   line=dict(color="blue", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
     
-    # Add dimension annotations for side view
-    fig_side.add_annotation(x=0.2, y=body_bottom + robot_body_height/2, text=f"Robot Body: {robot_body_height*1000:.0f}mm tall",
-                           showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="blue", ax=30, ay=0,
-                           font=dict(size=11, color="blue"), bgcolor="white", bordercolor="blue", borderwidth=1)
-    fig_side.add_annotation(x=0.2, y=wheel_bottom + drive_wheel_diameter/2, text=f"Drive Wheel: Ø{drive_wheel_diameter*1000:.0f}mm",
-                           showarrow=False, font=dict(size=11, color="black"), bgcolor="white", bordercolor="black", borderwidth=1)
-    fig_side.add_annotation(x=-0.25, y=guide_wheel_center_y,
-                           text=f"Guide Wheel: Ø{guide_wheel_diameter*1000:.0f}mm<br>Clearance: {robot_body_clearance*1000:.0f}mm",
-                           showarrow=False, font=dict(size=11, color="darkorange"), bgcolor="white",
-                           bordercolor="darkorange", borderwidth=1)
-    fig_side.add_annotation(x=-flange_separation/2 - 0.05, y=rail_flange_height/2, text=f"Flange Height: {rail_flange_height*1000:.2f}mm<br>(0.75 inches)",
-                           showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="red", ax=20, ay=0,
-                           font=dict(size=11, color="red"), bgcolor="white", bordercolor="red", borderwidth=1)
+    # Add dimension annotations for front view (positioned to avoid overlap)
+    fig_front.add_annotation(x=-flange_separation/2 - rail_horizontal_width - 0.08, y=rail_flange_height/2,
+                           text=f"Flange Height: {rail_flange_height*1000:.2f}mm", showarrow=True,
+                           arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="red", ax=-20, ay=0,
+                           font=dict(size=10, color="red"), bgcolor="white", bordercolor="red", borderwidth=1)
     
-    fig_side.add_annotation(x=-flange_separation/2 - rail_horizontal_width/2, y=ground_y + rail_horizontal_thickness/2,
-                           text=f"Rail Width: {rail_horizontal_width*1000:.1f}mm<br>(2.6 inches)", showarrow=True,
-                           arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="brown", ax=-20, ay=0,
-                           font=dict(size=11, color="brown"), bgcolor="white", bordercolor="brown", borderwidth=1)
+    fig_front.add_annotation(x=-flange_separation/2 - rail_horizontal_width/2, y=ground_y - 0.02,
+                           text=f"Rail Width: {rail_horizontal_width*1000:.1f}mm", showarrow=True,
+                           arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="brown", ax=0, ay=-15,
+                           font=dict(size=10, color="brown"), bgcolor="white", bordercolor="brown", borderwidth=1)
     
-    fig_side.add_annotation(x=0, y=guide_wheel_center_y,
-                           text=f"Guide Wheel Separation: {guide_wheel_separation_across*1000:.1f}mm", showarrow=True,
+    fig_front.add_annotation(x=0, y=body_bottom + robot_body_height/2,
+                           text=f"Body: {robot_body_height*1000:.0f}mm", showarrow=True,
+                           arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="blue", ax=0, ay=0,
+                           font=dict(size=10, color="blue"), bgcolor="white", bordercolor="blue", borderwidth=1)
+    
+    fig_front.add_annotation(x=0, y=guide_wheel_center_y,
+                           text=f"Guide Wheel<br>Separation: {guide_wheel_separation_across*1000:.1f}mm", showarrow=True,
                            arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="purple", ax=0, ay=0,
-                           font=dict(size=11, color="purple"), bgcolor="white", bordercolor="purple", borderwidth=1)
+                           font=dict(size=10, color="purple"), bgcolor="white", bordercolor="purple", borderwidth=1)
     
-    fig_side.update_layout(
-        title="Side View: Robot and Rails<br>Showing L-shaped rails with vertical flanges",
+    fig_front.update_layout(
+        title="Front View: Robot and Rails<br>(from travel direction)",
         xaxis=dict(title="Lateral Position (m)", range=[-0.7, 0.7], showgrid=True, gridcolor="lightgray"),
         yaxis=dict(title="Height (m)", range=[-0.05, 0.35], showgrid=True, gridcolor="lightgray"),
         height=600, width=800, template="plotly_white", showlegend=False, plot_bgcolor="white"
     )
     
-    return fig_top, fig_side
+    # ========== SIDE VIEW (true side view) ==========
+    fig_side = go.Figure()
+    
+    # Ground/rails (side view - rails extend in direction of travel)
+    rail_length = wheel_base * 1.3
+    rail_base_y = 0
+    rail_base_x = [-rail_length/2, rail_length/2, rail_length/2, -rail_length/2, -rail_length/2]
+    fig_side.add_trace(go.Scatter(x=rail_base_x, y=[rail_base_y, rail_base_y, rail_base_y - 0.01, rail_base_y - 0.01, rail_base_y],
+                                  fill="toself", fillcolor="gray", line=dict(color="black", width=2),
+                                  mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Drive wheels (side view - shown as circles, 4 wheels visible)
+    wheel_bottom_side = rail_base_y
+    wheel_center_y_side = wheel_bottom_side + drive_wheel_diameter/2
+    wheel_angles_side = np.linspace(0, 2*np.pi, 30)
+    
+    # 4 drive wheels in a line (side view as circles)
+    for wheel_x_center in [wheel1_x_center, wheel2_x_center, wheel3_x_center, wheel4_x_center]:
+        wheel_x_circle = wheel_x_center + (drive_wheel_diameter/2) * np.cos(wheel_angles_side)
+        wheel_y_circle = wheel_center_y_side + (drive_wheel_diameter/2) * np.sin(wheel_angles_side)
+        fig_side.add_trace(go.Scatter(x=wheel_x_circle, y=wheel_y_circle, fill="toself", fillcolor="darkgray",
+                                     line=dict(color="black", width=1), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Guide wheels (side view - shown as circles, 2 wheels visible, between drive wheel sets)
+    guide_wheel_center_y_side = wheel_bottom_side + drive_wheel_diameter + robot_body_clearance + guide_wheel_diameter/2
+    
+    # Left guide wheel (circle)
+    guide_wheel_left_x_circle = guide_wheel_left_front_x + (guide_wheel_diameter/2) * np.cos(wheel_angles_side)
+    guide_wheel_left_y_circle = guide_wheel_center_y_side + (guide_wheel_diameter/2) * np.sin(wheel_angles_side)
+    fig_side.add_trace(go.Scatter(x=guide_wheel_left_x_circle, y=guide_wheel_left_y_circle, fill="toself", fillcolor="orange",
+                                  line=dict(color="darkorange", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Right guide wheel (circle)
+    guide_wheel_right_x_circle = guide_wheel_right_front_x + (guide_wheel_diameter/2) * np.cos(wheel_angles_side)
+    guide_wheel_right_y_circle = guide_wheel_left_y_circle
+    fig_side.add_trace(go.Scatter(x=guide_wheel_right_x_circle, y=guide_wheel_right_y_circle, fill="toself", fillcolor="orange",
+                                  line=dict(color="darkorange", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Robot body (rectangular prism) - on top of wheels
+    body_bottom_side = wheel_bottom_side + drive_wheel_diameter  # Directly on top of wheels
+    body_top_side = body_bottom_side + robot_body_height
+    body_left_side = -robot_body_length/2
+    body_right_side = robot_body_length/2
+    body_x_coords_side = [body_left_side, body_right_side, body_right_side, body_left_side, body_left_side]
+    body_y_coords_side = [body_bottom_side, body_bottom_side, body_top_side, body_top_side, body_bottom_side]
+    fig_side.add_trace(go.Scatter(x=body_x_coords_side, y=body_y_coords_side, fill="toself", fillcolor="lightblue",
+                                  line=dict(color="blue", width=2), mode="lines", showlegend=False, hoverinfo="skip"))
+    
+    # Add dimension annotations for side view (positioned to avoid overlap)
+    fig_side.add_annotation(x=0, y=body_bottom_side + robot_body_height/2,
+                           text=f"Body Height: {robot_body_height*1000:.0f}mm", showarrow=True,
+                           arrowhead=2, arrowsize=1, arrowwidth=1.5, arrowcolor="blue", ax=0, ay=20,
+                           font=dict(size=10, color="blue"), bgcolor="white", bordercolor="blue", borderwidth=1)
+    
+    fig_side.add_annotation(x=wheel1_x_center, y=wheel_center_y_side - 0.05,
+                           text=f"Drive Wheel: Ø{drive_wheel_diameter*1000:.0f}mm", showarrow=False,
+                           font=dict(size=10, color="black"), bgcolor="white", bordercolor="black", borderwidth=1)
+    
+    fig_side.add_annotation(x=guide_wheel_left_front_x, y=guide_wheel_center_y_side + 0.05,
+                           text=f"Guide Wheel: Ø{guide_wheel_diameter*1000:.0f}mm", showarrow=False,
+                           font=dict(size=10, color="darkorange"), bgcolor="white", bordercolor="darkorange", borderwidth=1)
+    
+    fig_side.add_annotation(x=0, y=-0.02,
+                           text=f"Wheel Base: {wheel_base*1000:.0f}mm", showarrow=True,
+                           arrowhead=2, arrowsize=1.5, arrowwidth=2, arrowcolor="green", ax=0, ay=-20,
+                           font=dict(size=11, color="green"), bgcolor="white", bordercolor="green", borderwidth=2)
+    
+    fig_side.update_layout(
+        title="Side View: Robot and Rails<br>(showing 4 drive wheels and 2 guide wheels)",
+        xaxis=dict(title="Direction of Travel (m)", range=[-1.0, 1.0], showgrid=True, gridcolor="lightgray"),
+        yaxis=dict(title="Height (m)", range=[-0.05, 0.35], showgrid=True, gridcolor="lightgray"),
+        height=600, width=800, template="plotly_white", showlegend=False, plot_bgcolor="white"
+    )
+    
+    return fig_top, fig_front, fig_side
 
 
 def create_results_layout(
@@ -664,9 +862,13 @@ def create_results_layout(
     summary_data: List[Dict[str, Any]] = []
     for spacing_mm in spacings:
         analysis = results[spacing_mm]["analysis"]
+        # Get rail hits count (number of times robot contacts rails)
+        rail_hits = analysis.get("rail_hits", 0)
+        
         summary_data.append({
             "Spacing (mm)": spacing_mm,
             "Ping-ponging": "Yes" if analysis["is_ping_ponging"] else "No",
+            "Rail Hits": rail_hits,  # Number of rail contacts in 10m travel
             "Max Lateral Dev (mm)": f"{analysis['lateral_max']*1000:.2f}",
             "Lateral Std Dev (mm)": f"{analysis['lateral_std']*1000:.2f}",
             "Oscillation Freq (Hz)": f"{analysis['oscillation_frequency']:.2f}",
@@ -754,6 +956,68 @@ def create_results_layout(
     fig2.update_layout(
         title="Angular Orientation Over Time",
         xaxis_title="Time (s)",
+        yaxis_title="Angle (degrees)",
+        hovermode="closest",
+        height=400,
+        template="plotly_white",
+    )
+    
+    # 2b. Lateral position vs distance traveled
+    fig2b = go.Figure()
+    for i, spacing_mm in enumerate(spacings):
+        x = results[spacing_mm]["state"][:, 0]  # Distance traveled
+        y = results[spacing_mm]["state"][:, 1] * 1000  # Convert to mm
+        # Clamp to reasonable bounds
+        simulator = results[spacing_mm]["simulator"]
+        max_y = (simulator.flange_separation / 2 + simulator.params.guide_wheel_width / 2) * 1000
+        y = np.clip(y, -max_y, max_y)
+        analysis = results[spacing_mm]["analysis"]
+        color = "red" if analysis["is_ping_ponging"] else colors[i % len(colors)]
+        
+        fig2b.add_trace(
+            go.Scatter(
+                x=x,
+                y=y,
+                mode="lines",
+                name=f"{spacing_mm}mm",
+                line=dict(color=color, width=2),
+                hovertemplate=f"Spacing: {spacing_mm}mm<br>Distance: %{{x:.2f}}m<br>Lateral: %{{y:.2f}}mm<extra></extra>",
+            )
+        )
+    
+    fig2b.update_layout(
+        title="Lateral Position vs Distance Traveled",
+        xaxis_title="Distance Traveled (m)",
+        yaxis_title="Lateral Position (mm)",
+        hovermode="closest",
+        height=400,
+        template="plotly_white",
+    )
+    
+    # 2c. Angular orientation vs distance traveled
+    fig2c = go.Figure()
+    for i, spacing_mm in enumerate(spacings):
+        x = results[spacing_mm]["state"][:, 0]  # Distance traveled
+        theta_rad = results[spacing_mm]["state"][:, 2]
+        theta_deg = np.degrees(theta_rad)
+        theta_deg = np.mod(theta_deg + 180, 360) - 180  # Wrap to [-180, 180]
+        analysis = results[spacing_mm]["analysis"]
+        color = "red" if analysis["is_ping_ponging"] else colors[i % len(colors)]
+        
+        fig2c.add_trace(
+            go.Scatter(
+                x=x,
+                y=theta_deg,
+                mode="lines",
+                name=f"{spacing_mm}mm",
+                line=dict(color=color, width=2),
+                hovertemplate=f"Spacing: {spacing_mm}mm<br>Distance: %{{x:.2f}}m<br>Angle: %{{y:.3f}}°<extra></extra>",
+            )
+        )
+    
+    fig2c.update_layout(
+        title="Angular Orientation vs Distance Traveled",
+        xaxis_title="Distance Traveled (m)",
         yaxis_title="Angle (degrees)",
         hovermode="closest",
         height=400,
@@ -920,11 +1184,12 @@ def create_results_layout(
     table_rows = [
         html.Tr([
             html.Th("Spacing (mm)"),
-            html.Th("Ping-ponging"),
+            html.Th("Ping-ponging", title="Oscillatory behavior: robot bounces between rails (Yes/No). Based on industry standards: oscillation frequency > 0.5 Hz, >10 rail hits per 10m, or growing amplitude indicates ping-ponging."),
+            html.Th("Rail Hits", title="Number of times robot contacts rails during 10m travel. Industry standard: <5 hits acceptable, >10 indicates ping-ponging behavior."),
             html.Th("Max Lateral Dev (mm)"),
-            html.Th("Max Force (kN)"),
-            html.Th("Energy (J)"),
-            html.Th("Climb Risk"),
+            html.Th("Max Force (kN)", title="Peak contact force between guide wheels and flanges"),
+            html.Th("Energy (J)", title="Total energy imparted to rails during travel"),
+            html.Th("Climb Risk", title="Risk of guide wheels climbing over flanges (0-100%)"),
             html.Th("Issues"),
         ])
     ]
@@ -941,6 +1206,11 @@ def create_results_layout(
                 html.Td(
                     row["Ping-ponging"],
                     style={"color": ping_color, "fontWeight": "bold"},
+                    title="Oscillatory behavior: robot bounces between rails"
+                ),
+                html.Td(
+                    row["Rail Hits"],
+                    title="Number of rail contacts during 10m travel distance"
                 ),
                 html.Td(row["Max Lateral Dev (mm)"]),
                 html.Td(row["Max Force (kN)"]),
@@ -970,6 +1240,8 @@ def create_results_layout(
         html.Div([
             html.Div([dcc.Graph(figure=fig1)], style={"marginBottom": "30px"}),
             html.Div([dcc.Graph(figure=fig2)], style={"marginBottom": "30px"}),
+            html.Div([dcc.Graph(figure=fig2b)], style={"marginBottom": "30px"}),
+            html.Div([dcc.Graph(figure=fig2c)], style={"marginBottom": "30px"}),
             html.Div([dcc.Graph(figure=fig3)], style={"marginBottom": "30px"}),
             html.Div([
                 html.Div(

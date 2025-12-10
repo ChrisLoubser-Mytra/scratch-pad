@@ -1,11 +1,10 @@
 """
 Mytra Robot Guide Wheel Spacing Simulation
 
-Compatibility layer - re-exports from robot package for backward compatibility.
-This file is kept for compatibility with existing code.
+This package simulates the dynamics of a warehouse robot traveling on rails,
+analyzing the effect of guide wheel spacing on stability and ping-ponging behavior.
 """
 
-# Re-export everything from the new modular structure
 from robot.params import RobotParams
 from robot.state import SimulationState
 from robot.simulator import RobotSimulator
@@ -18,3 +17,4 @@ __all__ = [
     "run_spacing_analysis",
     "skew_mm_to_theta",
 ]
+
